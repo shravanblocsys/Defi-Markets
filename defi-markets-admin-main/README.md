@@ -5,6 +5,7 @@ A comprehensive administrative dashboard for managing DeFi Markets' ETF vault pl
 ## 🎯 Overview
 
 The DeFi Markets Admin Panel provides administrators and operators with powerful tools to:
+
 - Monitor and manage ETF vault operations
 - Track platform performance and analytics
 - Manage user wallets and permissions
@@ -15,6 +16,7 @@ The DeFi Markets Admin Panel provides administrators and operators with powerful
 ## 🚀 Features
 
 ### Core Administration
+
 - **Dashboard Overview**: Real-time platform metrics and health monitoring
 - **Vault Management**: Create, pause, and manage ETF vaults
 - **Wallet Administration**: Manage treasury wallets and user permissions
@@ -23,6 +25,7 @@ The DeFi Markets Admin Panel provides administrators and operators with powerful
 - **User Management**: Monitor and manage platform users and operators
 
 ### Security & Monitoring
+
 - **Real-time Health Checks**: API status and performance monitoring
 - **Activity Tracking**: Detailed audit logs for compliance and security
 - **Access Control**: Role-based permissions and authentication
@@ -45,12 +48,14 @@ The DeFi Markets Admin Panel provides administrators and operators with powerful
 ## 📦 Installation
 
 1. **Clone the repository**
+
    ```bash
    git clone <repository-url>
    cd defi-markets-admin
    ```
 
 2. **Install dependencies**
+
    ```bash
    npm install
    # or
@@ -58,6 +63,7 @@ The DeFi Markets Admin Panel provides administrators and operators with powerful
    ```
 
 3. **Start the development server**
+
    ```bash
    npm run dev
    # or
@@ -65,33 +71,80 @@ The DeFi Markets Admin Panel provides administrators and operators with powerful
    ```
 
 4. **Open your browser**
-   Navigate to `http://localhost:5173` to access the admin panel.
+   Navigate to `http://localhost:8082` to access the admin panel.
 
 ## 🏗️ Project Structure
 
 ```
 src/
-├── components/          # Reusable UI components
-│   ├── admin/          # Admin-specific components
+├── assets/
+│   └── hero-bg.jpg
+├── components/                      # Reusable UI and domain components
+│   ├── admin/
 │   │   └── AdminLayout.tsx
-│   ├── layout/         # Layout components (Navigation, Footer)
-│   ├── ui/             # shadcn/ui components
-│   └── wallet/         # Wallet connection components
-├── pages/              # Application pages
-│   └── admin/          # Admin panel pages
-│       ├── Dashboard.tsx      # Main dashboard
-│       ├── AdminVaults.tsx   # Vault management
-│       ├── Wallets.tsx       # Wallet administration
-│       ├── Fees.tsx          # Fee configuration
-│       ├── AuditLogs.tsx     # Audit logging
-│       └── Login.tsx         # Authentication
-├── hooks/              # Custom React hooks
-├── lib/                # Utility functions and configurations
-├── services/           # API and external service integrations
-├── store/              # Redux store and slices
-│   └── slices/         # Redux toolkit slices
-├── types/              # TypeScript type definitions
-└── assets/             # Static assets (images, icons)
+│   ├── auth/
+│   │   └── Auth.tsx
+│   ├── examples/
+│   │   └── VaultList.tsx
+│   ├── layout/
+│   │   ├── Footer.tsx
+│   │   └── Navigation.tsx
+│   ├── solana/
+│   │   ├── Idl/
+│   │   │   ├── vaultFactory.ts
+│   │   │   └── vaultIdl.json
+│   │   └── programIds/
+│   │       └── programids.ts
+│   ├── ui/                           # shadcn/ui components (subset shown)
+│   │   ├── button.tsx
+│   │   ├── card.tsx
+│   │   ├── dynamic-table.tsx
+│   │   ├── vault-card.tsx
+│   │   └── ...
+│   └── wallet/
+│       ├── ConnectButton.tsx
+│       ├── wallet.css
+│       └── wallet.tsx
+├── hooks/
+│   ├── use-mobile.tsx
+│   ├── use-toast.ts
+│   ├── useAppKitDisconnect.ts
+│   ├── useAuth.ts
+│   ├── useContract.ts
+│   ├── useSolanaAuth.ts
+│   └── useVaults.ts
+├── lib/
+│   ├── helpers.ts
+│   ├── solana.ts
+│   └── utils.ts
+├── pages/
+│   └── admin/
+│       ├── AdminAssets.tsx
+│       ├── AdminVaults.tsx
+│       ├── AuditLogs.tsx
+│       ├── Dashboard.tsx
+│       ├── Fees.tsx
+│       ├── Login.tsx
+│       ├── ManagementFeesAccrued.tsx
+│       └── Wallets.tsx
+├── services/
+│   └── api.ts
+├── store/
+│   ├── index.ts
+│   └── slices/
+│       ├── authSlice.ts
+│       ├── portfolioSlice.ts
+│       ├── uiSlice.ts
+│       ├── vaultsSlice.ts
+│       └── walletSlice.ts
+├── types/
+│   ├── appkit.d.ts
+│   └── store.ts
+├── App.css
+├── App.tsx
+├── index.css
+├── main.tsx
+├── vite-env.d.ts
 ```
 
 ## 🚀 Available Scripts
@@ -102,41 +155,60 @@ src/
 - `npm run lint` - Run ESLint
 - `npm run preview` - Preview production build
 
-## 🎯 Admin Panel Pages
+## 📘 Admin Panel Pages
 
 ### Dashboard
-- Platform overview with key metrics
-- Real-time vault statistics
-- System health monitoring
-- Recent activity feed
 
-### Vault Management
-- Create and deploy new ETF vaults
-- Pause/resume vault operations
-- Monitor vault performance
-- Manage vault configurations
+- Fetches overview metrics via `dashboardApi.getStatistics` on mount and every 30s.
+- Loads recent actions via `auditApi.getAuditLogs({ limit: 10 })` with a loading state.
+- Manual refresh button triggers both requests; displays computed summaries and a basic API health indicator.
 
-### Wallet Administration
-- Treasury wallet management
-- User wallet permissions
-- Security settings
-- Transaction monitoring
+### Assets
 
-### Fee Configuration
-- Management fee settings
-- Performance fee parameters
-- Platform fee structure
-- Fee update history
+- Lists assets with server-side pagination via `assetAllocationApi.getAssets({ page, limit, search, type, active })`.
+- Filters: search (500ms debounce), type (`crypto`), status (`active`/`inactive`), and clear filters.
+- Toggle status per asset via `assetAllocationApi.toggleAssetStatus(id)`; reloads current page after update.
+- UX niceties: copy mint address to clipboard with feedback; dynamic badges and table via `DynamicTable`.
+
+### Fees
+
+- Reads current fee config using env `VITE_FEES_ID` → `feesManagementApi.getFees(feesId)`.
+- Edit flow guarded by Zod schema: validates ranges and that creator/platform split totals 100%.
+- On submit:
+  - Loads current on-chain factory info via `useVaultFactory().getFactoryInfo()` to preserve unchanged values.
+  - Updates factory fees on-chain via `useVaultFactory().updateFactoryFees(...)` (Anchor program call).
+  - Records updates in backend via `feesManagementApi.updateFees(feesId, feesToUpdate)`.
+- Shows blockchain transaction in `SuccessPopup`; reloads both current fees and fee history.
+- Fee history table fetched with `feeHistoryApi.getFeeHistory({ page, limit })` and paginated.
+
+### Management Fees Accrued
+
+- Retrieves records via `managementFeesApi.getManagementFees({ page, limit })` with pagination.
+- Reads live on-chain metrics per vault using `useVaultFactory().readVaultLiveMetrics(vaultIndex)` to show current accrued fees.
+- Loads dynamic creator/platform split bps from factory via `getFactoryInfo()`; computes per-row and totals on the fly.
+- Distribute action opens confirmation dialog and sends on-chain tx via `distributeAccruedFees(vaultIndex)`; success popup with signature.
+
+### Vaults
+
+- Summary stats via `vaultsStatsApi.getVaultStatistics()`; cards show counts by status.
+- Vault list via `vaultsApi.getAll({ page, limit, search })`; 500ms search debounce; client-side status filter.
+- Pause/Resume:
+  - Requires connected wallet + initialized Anchor program (`useVaultFactory`).
+  - Calls `setVaultPaused(vaultIndex, true|false)` on-chain, then updates backend via `vaultsApi.pause(id)`/`vaultsApi.resume(id)`.
+  - Shows success popup; refreshes stats and list.
+- Featured toggle via `vaultsApi.updateFeatured(id, isFeatured)`; refreshes list and stats.
 
 ### Audit Logs
-- Comprehensive activity tracking
-- User action history
-- System event logging
-- Compliance reporting
+
+- Fetches logs via `auditApi.getAuditLogs({ page, limit, action, relatedEntity, fromDate, toDate })`.
+- Filters: action type, resource type, date range; clear filters resets to defaults and reloads.
+- Export CSV uses `exportAuditApi.getAuditLogs(...)` and sanitizes cells to prevent formula injection.
+- Paginated table with responsive navigation.
 
 ## 🔧 Configuration
 
 The project uses several configuration files:
+
 - `vite.config.ts` - Vite build configuration
 - `tailwind.config.ts` - Tailwind CSS configuration
 - `tsconfig.json` - TypeScript configuration
@@ -153,6 +225,7 @@ The project uses several configuration files:
 ## 📱 Responsive Design
 
 The admin panel is fully responsive and optimized for:
+
 - Desktop (1024px+) - Full feature access
 - Tablet (768px - 1023px) - Optimized layout
 - Mobile (320px - 767px) - Essential functions
@@ -160,6 +233,7 @@ The admin panel is fully responsive and optimized for:
 ## 🎨 Design System
 
 Built with a comprehensive design system featuring:
+
 - Dark theme optimized for admin workflows
 - Consistent color palette and typography
 - Accessible UI components following WCAG guidelines
@@ -169,6 +243,7 @@ Built with a comprehensive design system featuring:
 ## 🔗 Dependencies
 
 ### Core Dependencies
+
 - React 18 with TypeScript for type safety
 - Redux Toolkit for state management
 - TanStack Query for server state management
@@ -176,33 +251,17 @@ Built with a comprehensive design system featuring:
 - Radix UI for accessible components
 
 ### Blockchain Integration
+
 - Reown AppKit for Web3 functionality
 - Solana adapter for blockchain operations
 - BS58 for Solana address encoding
 
 ### UI & Styling
+
 - Tailwind CSS for utility-first styling
 - shadcn/ui for pre-built components
 - Lucide React for consistent iconography
 - Recharts for data visualization
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🔗 Links
-
-- [Live Demo](https://your-demo-url.com)
-- [Documentation](https://your-docs-url.com)
-- [Issues](https://github.com/your-username/defi-markets-admin/issues)
 
 ## ⚠️ Important Notes
 
@@ -210,3 +269,113 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Requires proper authentication and authorization to access
 - Designed for internal use by platform administrators
 - Includes sensitive financial and operational data
+
+---
+
+## 🔧 Environment Configuration
+
+Create a `.env` file in the project root (same level as `package.json`). These variables are read by Vite (prefixed with `VITE_`).
+
+```env
+VITE_API_BASE_URL=backend_url
+VITE_FEES_ID=
+VITE_SOLANA_NETWORK=devnet
+VITE_SOLANA_RPC_URL=rpc-url-mainnet
+VITE_VAULT_FACTORY_PROGRAM_ID=
+```
+
+Notes
+
+- `VITE_API_BASE_URL` is automatically prefixed in all requests via the shared `apiRequest` helper and the `Authorization` header is attached when a token is present in `sessionStorage`.
+- Default base URL (if env is missing) is `http://0.0.0.0:3400/api`.
+
+## 🔐 Solana Sign-In (SIWS) Flow
+
+The app implements a 4-step Solana Sign-In (Sign-In With Solana) flow used for wallet authentication.
+
+Flow (see `src/hooks/useSolanaAuth.ts` and `src/services/api.ts`):
+
+1. Client requests a server nonce: `POST /user/create-nonce` with `{ address }`.
+2. Client requests a message to sign: `POST /user/create-message` with the nonce and SIWS fields.
+3. Client formats and signs the message via the connected wallet (`walletProvider.signMessage`).
+4. Client verifies the signature: `POST /user/verify-payload`, receives `{ user, token }`.
+
+Token handling
+
+- On success, the JWT is stored in Redux and persisted to `sessionStorage` under both `authToken` and `token` keys.
+- Logout clears `sessionStorage` and removes all auth state.
+
+Relevant code
+
+- Redux: `src/store/slices/authSlice.ts` (`setToken`, `clearAuth`, async thunks)
+- Hook: `src/hooks/useSolanaAuth.ts` (SIWS orchestration)
+- API: `src/services/api.ts` (`getNonce`, `createMessage`, `verifySignature`)
+
+## 👮 Admin Username/Password Login
+
+In addition to wallet auth, there is an admin login path used on `pages/admin/Login.tsx` via `useAuth`:
+
+- `POST /auth/admin/login` with `{ email, password }`
+- `GET /auth/admin/verify` to validate token and load profile
+
+All are proxied through `src/services/api.ts` and use the shared `apiRequest` helper.
+
+## 🌐 API Requests & Headers
+
+`src/services/api.ts` centralizes all HTTP calls:
+
+- Prefixes requests with `VITE_API_BASE_URL`
+- Automatically attaches `Authorization: Bearer <token>` when `sessionStorage.token` exists
+- Parses JSON and throws typed `ApiError` with `status` and optional `code`
+
+Key endpoints used by pages (see `ADMIN_PAGES_API_USAGE.md` for the full list):
+
+- Dashboard: `/dashboard/dashboard-statistics`, `/history`
+- Vaults: `/dashboard/vault-statistics`, `/vaults`, `/vaults/:id/status`, `/vaults/:id/featured`
+- Assets: `/asset-allocation`, `/asset-allocation/:id/toggle-active`
+- Fees: `/fees-management/:feesId`, `/history/fees`
+- Audit: `/history`, `/history/export`
+
+## 🔗 Solana, Anchor, and Program Setup
+
+Program IDs and IDL
+
+- Program ID: `src/components/solana/programIds/programids.ts` (e.g., `VAULT_FACTORY_PROGRAM_ID`).
+- IDL: `src/components/solana/Idl/vaultFactory.ts` and `vaultIdl.json`.
+
+Anchor program access
+
+- Hook `useAnchorProgram` (`src/hooks/useContract.ts`) creates an `AnchorProvider` using the connected AppKit wallet and `VITE_SOLANA_RPC_URL`.
+- `useVaultFactory()` composes `useAnchorProgram` for Vault Factory interactions.
+
+Direct transactions
+
+- `useContract` exposes `executeTransaction`/`callContract` helpers using `@solana/web3.js` and the connected wallet.
+
+RPC and network
+
+- Set `VITE_SOLANA_NETWORK` and `VITE_SOLANA_RPC_URL` (defaults to mainnet URL in code).
+
+## 🧭 State Management Overview
+
+Redux store configuration is in `src/store/index.ts` with slices:
+
+- `authSlice`: token/user state, Solana SIWS state, login/logout, profile
+- `walletSlice`: connected wallet, balances, transactions
+- `vaultsSlice`, `portfolioSlice`, `uiSlice`: domain states for admin features and UI
+
+## 🧪 Local Development Checklist
+
+1. Create `.env` with `VITE_API_BASE_URL` and AppKit/Solana values.
+2. Start backend on matching base URL (`/api` path required).
+3. Start the app: `npm run dev` and open `http://localhost:5173`.
+4. Use Admin Login or connect a Solana wallet for SIWS.
+
+## 📚 Supplemental Docs
+
+- `ADMIN_PAGES_API_USAGE.md`: page-by-page API calls
+- `ANCHOR_INTEGRATION_SUMMARY.md`: high-level Anchor/IDL integration notes
+
+## 🔗 Links
+
+- [Admin App](https://admin.app.defimarkets.finance/)
