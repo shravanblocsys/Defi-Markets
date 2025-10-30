@@ -19,7 +19,7 @@ This repo contains:
 
 - [DeFi Markets App](defi-markets-FE-main/README.md)
   - [Live Demo](https://app.defimarkets.finance/)
-   - Live Demo is secured by a login, use below credentials
+   - Live Demo is secured by login, use below credentials
    - Username: defi-market
    - Password: DfmEtf#2025     
 - [DeFi Markets Admin App](defi-markets-admin-main/README.md)
