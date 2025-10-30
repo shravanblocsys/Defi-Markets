@@ -1,0 +1,15 @@
+.appkit-button-wrapper {
+
+  
+  /* Alternative property names */
+  --apkt-tokens-core-backgroundAccentPrimary: #ffff !important;
+  --apkt-tokens-core-colorAccentPrimary: hsl(var(--primary-foreground)) !important;
+  --apkt-tokens-core-borderRadiusAccentPrimary: 0.5rem !important;
+  --apkt-tokens-core-spacingAccentPrimary: 0.5rem 1rem !important;
+  --apkt-tokens-core-typographyAccentPrimary: 0.875rem !important;
+  --apkt-tokens-core-fontWeightAccentPrimary: 500 !important;
+}
+
+.appkit-button-wrapper appkit-button {
+  display: inline-block;
+}
