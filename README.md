@@ -1,6 +1,9 @@
-# DeFi Markets
+# DeFi Markets - DFM
+The Fund Management Operating System
 
-A full-stack, Solana-powered platform for permissionless ETF-style vaults. This repo contains:
+A permissionless DTF Launchpad for the Internet Capital Markets 
+
+This repo contains:
 
 - User-facing Web App (FE)
 - Administrative Dashboard (Admin FE)
