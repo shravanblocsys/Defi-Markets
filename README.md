@@ -1,5 +1,5 @@
 # DeFi Markets - DFM
-The Fund Management Operating System
+The Fund Management Operating System for Internet Capital Markets
 
 At its core are Decentralized Traded Funds (DTFs) — 
 ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
