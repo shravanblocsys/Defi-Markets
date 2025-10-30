@@ -18,6 +18,10 @@ This repo contains:
 ## Linked README
 
 - [DeFi Markets App](defi-markets-FE-main/README.md)
+  - [Live Demo](https://app.defimarkets.finance/)
+   - Note: Live Demo is secured by a login, use below credentials
+   - Username: defi-market
+   - Password: DfmEtf#2025     
 - [DeFi Markets Admin App](defi-markets-admin-main/README.md)
 - [DeFi Markets Backend](defi-markets-BE-main/README.md)
 - [ETF Vaults - Solana Smart Contracts](defi-markets-contracts-main/README.md)
