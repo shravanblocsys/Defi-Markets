@@ -4,7 +4,6 @@ The Fund Management Operating System
 At its core are Decentralized Traded Funds (DTFs) — 
 ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
 
----
 ## Socials
 
 - [ X ](https://x.com/DefiMarkets)
