@@ -1,6 +1,6 @@
-# DeFi Markets Monorepo
+# DeFi Markets
 
-A full-stack, Solana-powered platform for permissionless ETF-style vaults. This monorepo contains:
+A full-stack, Solana-powered platform for permissionless ETF-style vaults. This repo contains:
 
 - User-facing Web App (FE)
 - Administrative Dashboard (Admin FE)
@@ -9,7 +9,16 @@ A full-stack, Solana-powered platform for permissionless ETF-style vaults. This 
 
 ---
 
-## Monorepo Structure
+## Linked README 
+
+- [DeFi Markets App](defi-markets-FE-main/README.md)
+- [DeFi Markets Admin App](defi-markets-admin-main/README.md)
+- [DeFi Markets Backend](defi-markets-BE-main/README.md)
+- [ETF Vaults - Solana Smart Contracts](defi-markets-contracts-main/README.md)
+
+---
+
+## Project Structure
 
 ```text
 /defi-markets-FE-main/           # User app (React + Vite + Tailwind + shadcn/ui)
