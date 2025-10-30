@@ -5,6 +5,12 @@ At its core are Decentralized Traded Funds (DTFs) —
 ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
 
 ---
+## Socials
+
+- [ X ](https://x.com/DefiMarkets)
+- [Waitlist](https://dfm.finance/)
+- [LinkedIn](https://www.linkedin.com/company/defi-markets/)
+---
 
 This repo contains:
 
