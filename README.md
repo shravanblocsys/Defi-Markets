@@ -9,7 +9,7 @@ A full-stack, Solana-powered platform for permissionless ETF-style vaults. This 
 
 ---
 
-## Linked README 
+## Linked README
 
 - [DeFi Markets App](defi-markets-FE-main/README.md)
 - [DeFi Markets Admin App](defi-markets-admin-main/README.md)
