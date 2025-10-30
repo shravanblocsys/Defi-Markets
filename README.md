@@ -1,7 +1,5 @@
 # DeFi Markets - DFM
-The Fund Management Operating System
-
-A permissionless DTF Launchpad for the Internet Capital Markets 
+The Permissionless DTF Launchpad for the Internet Capital Markets 
 
 This repo contains:
 
