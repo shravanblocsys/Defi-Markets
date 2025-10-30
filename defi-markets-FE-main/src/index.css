@@ -1,0 +1,358 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+
+@font-face {
+  font-family: "Architekt";
+  src: url("./fonts/Architekt/NBArchitektStd-Regular.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Architekt";
+  src: url("./fonts/Architekt/NBArchitektStd-Light.otf") format("opentype");
+  font-weight: 300;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Architekt";
+  src: url("./fonts/Architekt/NBArchitektStd-Bold.otf") format("opentype");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Microgram";
+  src: url("./fonts/Microgram DB Regular/Microgram DB Regular.ttf")
+    format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Microgramma";
+  src: url("./fonts/Microgramma D Extended Bold/Microgramma D Extended Bold.otf")
+    format("opentype");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/Space Mono/SpaceMono Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/Space Mono/SpaceMono Italic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/Space Mono/SpaceMono Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/Space Mono/SpaceMono BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* DeFiMarkets Dark-First Design System
+   Revamped with new color palette and custom fonts
+   Colors: #CDE1EA, #295366, #080808, #FFFFFF
+*/
+
+@layer base {
+  :root {
+    /* New color palette - converted to HSL */
+    --background: 0 0% 3%; /* #080808 */
+    --foreground: 0 0% 100%; /* #FFFFFF */
+
+    /* Surface tokens for dark glass morphism */
+    --surface-0: 0 0% 3% / 0; /* #080808 transparent */
+    --surface-1: 200 30% 20% / 0.7; /* #295366 with opacity */
+    --surface-2: 200 30% 20% / 0.9; /* #295366 with opacity */
+    --surface-3: 200 30% 25%; /* Slightly lighter #295366 */
+
+    /* Card and popover surfaces */
+    --card: 200 30% 20% / 0.8; /* #295366 with opacity */
+    --card-foreground: 0 0% 100%; /* #FFFFFF */
+    --popover: 200 30% 20% / 0.95; /* #295366 with opacity */
+    --popover-foreground: 0 0% 100%; /* #FFFFFF */
+
+    /* Brand colors using new palette */
+    --primary: 200 30% 20%; /* #295366 */
+    --primary-foreground: 0 0% 100%; /* #FFFFFF */
+    --primary-glow: 200 30% 30%; /* Lighter #295366 */
+
+    --secondary: 200 30% 20%; /* #295366 */
+    --secondary-foreground: 0 0% 100%; /* #FFFFFF */
+
+    --accent: 200 50% 85%; /* #CDE1EA */
+    --accent-foreground: 0 0% 3%; /* #080808 */
+    --accent-glow: 200 50% 90%; /* Lighter #CDE1EA */
+
+    /* Status colors optimized for dark mode */
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 3%;
+    --error: 0 84% 60%;
+    --error-foreground: 0 0% 100%;
+    --info: 200 50% 85%; /* #CDE1EA */
+    --info-foreground: 0 0% 3%;
+
+    /* Muted colors for subtle elements */
+    --muted: 200 30% 20%; /* #295366 */
+    --muted-foreground: 200 50% 85%; /* #CDE1EA */
+
+    /* Destructive colors */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Borders - subtle and strong variants */
+    --border-subtle: 200 30% 20% / 0.3; /* #295366 with opacity */
+    --border-strong: 200 30% 20% / 0.6; /* #295366 with opacity */
+    --border: 200 30% 20%; /* #295366 */
+    --input: 200 30% 20%; /* #295366 */
+    --ring: 200 50% 85%; /* #CDE1EA */
+
+    /* Typography scale and spacing */
+    --radius: 0.75rem;
+    --font-sans: "Space Mono", "Inter", system-ui, sans-serif;
+    --font-mono: "Space Mono", "Microgram", monospace;
+
+    /* Gradients for hero sections and accents */
+    --gradient-primary: linear-gradient(
+      135deg,
+      hsl(200 30% 20%),
+      hsl(200 50% 85%)
+    );
+    --gradient-surface: linear-gradient(
+      135deg,
+      hsl(200 30% 20% / 0.8),
+      hsl(200 30% 25% / 0.9)
+    );
+    --gradient-hero: linear-gradient(135deg, hsl(0 0% 3%), hsl(200 30% 20%));
+
+    /* Shadows and glows for dark mode */
+    --shadow-subtle: 0 1px 3px hsl(0 0% 3% / 0.3);
+    --shadow-medium: 0 4px 12px hsl(0 0% 3% / 0.4);
+    --shadow-strong: 0 8px 32px hsl(0 0% 3% / 0.5);
+    --glow-primary: 0 0 20px hsl(200 50% 85% / 0.3);
+    --glow-accent: 0 0 20px hsl(200 50% 85% / 0.2);
+
+    /* Animation timings */
+    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Force dark mode - no light theme toggle needed */
+  .dark {
+    --background: 0 0% 3%; /* #080808 */
+    --foreground: 0 0% 100%; /* #FFFFFF */
+  }
+}
+
+@layer components {
+  /* Glass containers - spec: fill #0F131A @ 10%, blur 20, shadow 0 1 2 0 #000 5%, inside stroke #1D2330 @ 30% 1px */
+  .glass-card {
+    background: rgba(15, 19, 26, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: var(--radius);
+    border: 1px solid rgba(29, 35, 48, 0.3);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  /* Surface variant used in tab containers, lists, etc. */
+  .glass-surface {
+    background: rgba(15, 19, 26, 0.1);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: var(--radius);
+    border: 1px solid rgba(29, 35, 48, 0.3);
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-white;
+    background: linear-gradient(
+      180deg,
+      #020305 0%,
+      #0e242c 19%,
+      #306076 35%,
+      #bdd9e7 53%,
+      #e8edef 91%,
+      #ffffff 100%
+    );
+    min-height: 100vh;
+  }
+
+  /* Main page background */
+  .main-background {
+    background: linear-gradient(
+      180deg,
+      #020305 0%,
+      #0e242c 19%,
+      #306076 35%,
+      #bdd9e7 53%,
+      #e8edef 91%,
+      #ffffff 100%
+    );
+  }
+
+  /* Footer background - now part of the main gradient */
+  .footer-background {
+    background: transparent; /* Let the body gradient show through */
+  }
+
+  /* Card backgrounds */
+  .card-background {
+    background-color: rgba(255, 0, 0, 0.1);
+    backdrop-filter: blur(10px);
+  }
+
+  /* Surface backgrounds */
+  .surface-background {
+    background-color: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+  }
+
+  /* Ensure Swiper pagination does not overlap cards */
+  .featured-vaults-swiper {
+    padding-bottom: 4rem; /* extra room for dots - prevent overlap */
+    overflow: hidden;
+  }
+  .featured-vaults-swiper .swiper-pagination {
+    bottom: 1rem !important; /* position dots clear of content */
+    border-radius: 16px;
+    overflow: hidden; /* ensure rounded corners clip slides/pagination */
+    -webkit-backdrop-filter: blur(8px);
+    background-color: #00000034;
+    padding: 5px;
+  }
+  .featured-vaults-swiper .swiper-slide {
+    /* create internal space so dots never sit on top of card content */
+    padding-bottom: 2.75rem !important;
+  }
+
+  /* Stats section glow effects */
+  .stats-glow {
+    box-shadow: 0 0 20px rgba(255, 255, 255, 0.1),
+      inset 0 0 20px rgba(255, 255, 255, 0.05);
+  }
+
+  .glow-line {
+    background: linear-gradient(
+      180deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.2) 50%,
+      transparent 100%
+    );
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* Wallet modal fixes */
+w3m-modal {
+  z-index: 9999 !important;
+}
+
+/* Ensure wallet modal appears above all other content */
+w3m-modal::part(overlay) {
+  z-index: 9998 !important;
+}
+
+w3m-modal::part(container) {
+  z-index: 9999 !important;
+}
+
+/* Scrollbar utilities */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
+/* Performance optimizations for animations */
+* {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-perspective: 1000;
+  perspective: 1000;
+}
+
+/* Optimize Framer Motion performance */
+[data-framer-motion] {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* Prevent flickering during page transitions */
+.page-transition-container {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  will-change: opacity, transform;
+  contain: layout style paint;
+  isolation: isolate;
+}
+
+/* Prevent layout shifts during transitions */
+main {
+  min-height: 100vh;
+  contain: layout;
+}
+
+/* Smooth page transitions */
+[data-framer-component-type="AnimatePresence"] {
+  overflow: hidden;
+}
+
+/* Optimize scroll performance */
+html {
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Smooth link transitions */
+a,
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Enhanced focus states for accessibility */
+*:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+  border-radius: 4px;
+}

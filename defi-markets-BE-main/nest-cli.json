@@ -1,0 +1,11 @@
+{
+  "language": "ts",
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src",
+  "assets": [
+    {
+      "include": "modules/seeders/seeders-data.json",
+      "outDir": "dist"
+    }
+  ]
+}

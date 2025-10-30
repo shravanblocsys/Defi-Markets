@@ -1,0 +1,36 @@
+version: "3"
+services:
+  nest:
+    container_name: nest
+    build: .
+    ports:
+      - "9001:9001"
+    volumes:
+      - .:/app
+    links:
+      - mongo
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    ports:
+      - "80:80"
+    environment:
+      MONGO_INITDB_DATABASE: nest
+    volumes:
+      - data-volume:/data/db
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+volumes:
+  data-volume:
+  redis-data:

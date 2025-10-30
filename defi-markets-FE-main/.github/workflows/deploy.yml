@@ -1,0 +1,71 @@
+name: Deploy Frontend to Hostinger Server
+
+on:
+  push:
+    branches:
+      - main  # ✅ Only runs on direct push to main
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main  # ✅ Only triggers when PR is merged into main
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true || github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Clean & Install Dependencies
+        run: |
+          rm -rf node_modules package-lock.json
+          npm install --force
+
+      - name: Set Environment Variables
+        run: |
+          echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" >> $GITHUB_ENV
+          echo "VITE_APP_ID=${{ secrets.VITE_APP_ID }}" >> $GITHUB_ENV
+          echo "VITE_VAULT_FACTORY_PROGRAM_ID=${{ secrets.VITE_VAULT_FACTORY_PROGRAM_ID }}" >> $GITHUB_ENV
+          echo "VITE_FEES_ID=${{ secrets.VITE_FEES_ID }}" >> $GITHUB_ENV
+          echo "VITE_SOLANA_NETWORK=${{ secrets.VITE_SOLANA_NETWORK }}" >> $GITHUB_ENV
+          echo "VITE_HELIUS_API_KEY=${{ secrets.VITE_HELIUS_API_KEY }}" >> $GITHUB_ENV
+          echo "VITE_MAINNET_RPC_URL=${{ secrets.VITE_MAINNET_RPC_URL }}" >> $GITHUB_ENV
+          echo "VITE_DEVNET_RPC_URL=${{ secrets.VITE_DEVNET_RPC_URL }}" >> $GITHUB_ENV
+          echo "SKIP_PREFLIGHT_CHECK=true" >> $GITHUB_ENV
+
+      - name: Build Frontend
+        env:
+            VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+            VITE_APP_ID: ${{ secrets.VITE_APP_ID }}
+            VITE_VAULT_FACTORY_PROGRAM_ID: ${{ secrets.VITE_VAULT_FACTORY_PROGRAM_ID }}
+            VITE_FEES_ID: ${{ secrets.VITE_FEES_ID }}
+            VITE_SOLANA_NETWORK: ${{ secrets.VITE_SOLANA_NETWORK }}
+            VITE_HELIUS_API_KEY: ${{ secrets.VITE_HELIUS_API_KEY }}
+            VITE_MAINNET_RPC_URL: ${{ secrets.VITE_MAINNET_RPC_URL }}
+            VITE_DEVNET_RPC_URL: ${{ secrets.VITE_DEVNET_RPC_URL }}
+            SKIP_PREFLIGHT_CHECK: true
+        run: CI=false npm run build
+
+      - name: Deploy to Hostinger
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          source: 'dist/*'   # ✅ Fixed: removed 'frontend/' prefix
+          target: '/var/www/DefiMarket/frontend'
+          strip_components: 0
+
+      - name: Restart Nginx on Hostinger Server
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USERNAME }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          script: |
+            sudo nginx -t
+            sudo systemctl reload nginx
+            sudo systemctl restart nginx
