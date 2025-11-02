@@ -3,8 +3,6 @@ The Fund Management Operating System for Internet Capital Markets
 
 At its core are Decentralized Traded Funds (DTFs) — 
 ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
-
-At its core are DTFs — ETF-like onchain portfolios, where NAV, fees, and governance are fully deterministic.
 - Launch a DTF in minutes: Wallet → Parameters → Allocations → Confirm → DTF live in Marketplace.
 - Deposit/redeem at NAV → Trades execute through Jupiter Ultra V3 liquidity → Underlying assets are stored in a non-custodial vault.
 - Fees accrue continuously onchain.
