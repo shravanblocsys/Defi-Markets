@@ -4,6 +4,17 @@ The Fund Management Operating System for Internet Capital Markets
 At its core are Decentralized Traded Funds (DTFs) — 
 ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
 
+At its core are DTFs — ETF-like onchain portfolios, where NAV, fees, and governance are fully deterministic.
+- Launch a DTF in minutes: Wallet → Parameters → Allocations → Confirm → DTF live in Marketplace.
+- Deposit/redeem at NAV → Trades execute through Jupiter Ultra V3 liquidity → Underlying assets are stored in a non-custodial vault.
+- Fees accrue continuously onchain.
+
+We're a Web3 x TradFi team:
+- 70+ Web3 projects launched
+- $50B+ in TradFi investment and capital raising
+
+We’ve seen both sides — and we’re building the bridge.
+
 ## Socials
 
 - [ X ](https://x.com/DefiMarkets)
@@ -17,6 +28,10 @@ This repo contains:
 - Administrative Dashboard (Admin FE)
 - Backend API (NestJS)
 - Solana Programs and CLI scripts (Anchor)
+
+NOTE: 
+- Full repo (private) -> https://github.com/defi-markets
+- access shared with hackathon@colosseum.org
 
 ---
 
