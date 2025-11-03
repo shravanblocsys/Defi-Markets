@@ -31,6 +31,10 @@ NOTE:
 - Full repo (private) -> https://github.com/defi-markets
 - access shared with hackathon@colosseum.org
 
+New contracts will be deployed on November 5th, including:
+- Improvement in Jupiter ultra API execution -> buy/sell underlying assets
+- Share price vs deposit/redeem
+
 ---
 
 ## Linked README
