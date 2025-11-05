@@ -30,10 +30,10 @@ This repo contains:
 NOTE: 
 - Full repo (private) -> https://github.com/defi-markets
 - access shared with hackathon@colosseum.org
-
-New contracts will be deployed on November 5th, including:
-- Improvement in Jupiter ultra API execution -> buy/sell underlying assets
-- Share price vs deposit/redeem
+- Demo is currently being updated, our team is working on a migration!
+  - Improvement in Jupiter ultra API execution -> buy/sell underlying assets
+  - Share price vs deposit/redeem
+  - And more
 
 ---
 
@@ -43,7 +43,8 @@ New contracts will be deployed on November 5th, including:
   - [Live Demo](https://app.defimarkets.finance/)
    - Live Demo is secured by login, use below credentials:
      - Username: defi-market
-     - Password: DfmEtf#2025     
+     - Password: DfmEtf#2025
+       - PLEASE NOTE: a new program and contracts were deployed, and our team is working on the migration!
 - [DeFi Markets Admin App](defi-markets-admin-main/README.md)
 - [DeFi Markets Backend](defi-markets-BE-main/README.md)
 - [ETF Vaults - Solana Smart Contracts](defi-markets-contracts-main/README.md)
