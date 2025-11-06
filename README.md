@@ -28,8 +28,8 @@ This repo contains:
 - Solana Programs and CLI scripts (Anchor)
 
 NOTE: 
-- Full repo (private) -> https://github.com/defi-markets
-- access shared with hackathon@colosseum.org
+- Full org repo (private) -> https://github.com/defi-markets
+  - Request access if needed
 - Demo is currently being updated, our team is working on a migration!
   - Improvement in Jupiter ultra API execution -> buy/sell underlying assets
   - Share price vs deposit/redeem
