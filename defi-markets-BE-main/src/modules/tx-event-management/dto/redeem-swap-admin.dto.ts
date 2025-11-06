@@ -1,16 +1,25 @@
-import { IsNumber, IsString, IsNotEmpty } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsNumber, IsString, IsNotEmpty } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 
 export class RedeemSwapAdminDto {
-  @ApiProperty({ description: 'Vault index (0-based)', example: 12 })
+  @ApiProperty({ description: "Vault index (0-based)", example: 12 })
   @IsNumber()
   @IsNotEmpty()
   vaultIndex: number;
 
-  @ApiProperty({ description: 'Vault token amount raw (u64 as string)', example: '1000000' })
+  @ApiProperty({
+    description: "Vault token amount raw (u64 as string)",
+    example: "1000000",
+  })
   @IsString()
   @IsNotEmpty()
   vaultTokenAmount: string;
+
+  @ApiProperty({
+    description: "ETF share price raw (6 decimals, u64 as string)",
+    example: "216655",
+  })
+  @IsString()
+  @IsNotEmpty()
+  etfSharePriceRaw: string;
 }
-
-

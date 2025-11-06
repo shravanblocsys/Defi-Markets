@@ -5,7 +5,6 @@ import { VaultMvp } from "./target/types/vault_mvp";
 import idl from "./target/idl/vault_mvp.json";
 
 const RPC_URL = process.env.RPC_URL || "https://api.devnet.solana.com";
-const PRIVATE_KEY = process.env.PRIVATE_KEY ? JSON.parse(process.env.PRIVATE_KEY) : [8,89,214,209,151,193,55,105,55,165,23,237,83,215,123,220,196,159,100,66,122,214,46,183,198,34,51,226,117,230,0,13,126,183,64,88,155,122,33,214,151,68,146,190,7,32,204,198,64,136,250,102,81,17,68,128,146,121,14,75,154,41,111,80];
 
 const connection = new Connection(RPC_URL, "confirmed");
 const scriptWallet = new anchor.Wallet(Keypair.fromSecretKey(new Uint8Array(PRIVATE_KEY)));

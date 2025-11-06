@@ -6,6 +6,7 @@ import vaultsReducer from './slices/vaultsSlice';
 import portfolioReducer from './slices/portfolioSlice';
 import uiReducer from './slices/uiSlice';
 
+
 export const store = configureStore({
   reducer: {
     auth: authReducer,

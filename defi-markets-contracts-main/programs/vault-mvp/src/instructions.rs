@@ -9,6 +9,22 @@ use crate::{
 };
 
 // ---------- Instructions ----------
+pub fn update_factory_admin(
+    ctx: Context<UpdateFactoryAdmin>,
+) -> Result<()> {
+    let factory = &mut ctx.accounts.factory;
+    let previous_admin = factory.admin;
+    factory.admin = ctx.accounts.new_admin.key();
+
+    emit!(FactoryAdminUpdated {
+        previous_admin,
+        new_admin: factory.admin,
+        timestamp: Clock::get()?.unix_timestamp,
+    });
+
+    Ok(())
+}
+
 pub fn initialize_factory(
     ctx: Context<InitializeFactory>,
     entry_fee_bps: u16,
@@ -165,35 +181,65 @@ pub fn create_vault(
     let fee_cpi_ctx = CpiContext::new(fee_cpi_program, fee_cpi_accounts);
     token::transfer(fee_cpi_ctx, creation_fee_amount)?;
 
-    // Initialize vault account
-    let vault = &mut ctx.accounts.vault;
-    vault.bump = ctx.bumps.vault;
-    vault.vault_index = vault_index;
-    vault.factory = factory_key;
-    vault.admin = ctx.accounts.admin.key();
-    vault.vault_name = vault_name.clone();
-    vault.vault_symbol = vault_symbol.clone();
-    vault.underlying_assets = underlying_assets.clone();
-    vault.management_fees = management_fees;
-    vault.state = VaultState::Active;
-    vault.total_assets = 0_u64;
-    vault.total_supply = 0_u64;
-    vault.created_at = Clock::get()?.unix_timestamp;
-    vault.last_fee_accrual_ts = vault.created_at;
-    vault.accrued_management_fees_usdc = 0;
+    // Initialize vault account (short borrow scope)
+    {
+        let vault = &mut ctx.accounts.vault;
+        vault.bump = ctx.bumps.vault;
+        vault.vault_index = vault_index;
+        vault.factory = factory_key;
+        vault.admin = ctx.accounts.admin.key();
+        vault.vault_name = vault_name.clone();
+        vault.vault_symbol = vault_symbol.clone();
+        vault.underlying_assets = underlying_assets.clone();
+        vault.management_fees = management_fees;
+        vault.state = VaultState::Active;
+        vault.total_assets = 0_u64;
+        vault.total_supply = 0_u64;
+        vault.created_at = Clock::get()?.unix_timestamp;
+        vault.last_fee_accrual_ts = vault.created_at;
+        vault.accrued_management_fees_usdc = 0;
+    }
 
-    msg!("🔑 Vault PDA: {}", vault.key());
-    msg!("👑 Vault Admin: {}", vault.admin);
+    msg!("🔑 Vault PDA: {}", ctx.accounts.vault.key());
+    msg!("👑 Vault Admin: {}", ctx.accounts.vault.admin);
     msg!("🪙 Vault Mint PDA: {}", ctx.accounts.vault_mint.key());
     msg!(
         "💳 Vault Token Account PDA: {}",
         ctx.accounts.vault_token_account.key()
     );
-    msg!("📅 Created at: {}", vault.created_at);
+    msg!("📅 Created at: {}", ctx.accounts.vault.created_at);
+
+    // Seed initial supply: mint 1 smallest unit of the vault token to the vault's own token account
+    // This keeps supply > 0 while assets remain 0, avoiding divide-by-zero in future logic.
+    {
+        let vault_bump = ctx.accounts.vault.bump;
+        let vault_index_bytes = vault_index.to_le_bytes();
+        let bump_array = [vault_bump];
+        let seeds: &[&[u8]] = &[
+            b"vault",
+            factory_key.as_ref(),
+            &vault_index_bytes,
+            &bump_array,
+        ];
+        let binding = [seeds];
+        let mint_cpi_accounts = token::MintTo {
+            mint: ctx.accounts.vault_mint.to_account_info(),
+            to: ctx.accounts.vault_token_account.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        let mint_cpi_program = ctx.accounts.token_program.to_account_info();
+        let mint_cpi_ctx = CpiContext::new_with_signer(mint_cpi_program, mint_cpi_accounts, &binding);
+        token::mint_to(mint_cpi_ctx, 1_000_000)?;
+        {
+            let vault = &mut ctx.accounts.vault;
+            vault.total_supply = vault.total_supply.checked_add(1_000_000).unwrap();
+        }
+        msg!("🪙 Seeded initial vault supply with 1.000000 token (1_000_000 base units)");
+    }
 
     // Emit event
     emit!(VaultCreated {
-        vault: vault.key(),
+        vault: ctx.accounts.vault.key(),
         factory: factory_key,
         admin: ctx.accounts.admin.key(),
         vault_index,
@@ -410,16 +456,13 @@ pub fn deposit(ctx: Context<Deposit>, vault_index: u32, amount: u64, etf_share_p
     // Calculate net deposit amount (only entry fee is deducted)
     let deposit_amount_after_fees = amount.checked_sub(entry_fee).unwrap();
 
-    // Calculate vault tokens to mint based on share price (except first deposit which is 1:1)
-    let vault_total_supply_before = ctx.accounts.vault.total_supply;
-    let vault_tokens_to_mint: u64 = if vault_total_supply_before == 0 {
-        // First deposit initializes price 1:1
+    // Calculate vault tokens to mint based on provided share price (always price-based)
+    // If share price is 0, treat as 1:1 ratio (deposit amount = vault tokens at same scale)
+    let scale: u128 = 10u128.pow(ctx.accounts.vault_mint.decimals as u32);
+    let vault_tokens_to_mint: u64 = if etf_share_price == 0 {
+        // If share price is 0, use deposit amount directly (1:1 ratio)
         deposit_amount_after_fees
     } else {
-        require!(etf_share_price > 0, ErrorCode::InvalidAmount);
-        // Price is expressed in stablecoin smallest units per 1 whole share
-        // minted = (net_deposit * 10^vault_decimals) / price
-        let scale: u128 = 10u128.pow(ctx.accounts.vault_mint.decimals as u32);
         ((deposit_amount_after_fees as u128)
             .checked_mul(scale).unwrap()
             .checked_div(etf_share_price as u128).unwrap()) as u64
@@ -432,9 +475,7 @@ pub fn deposit(ctx: Context<Deposit>, vault_index: u32, amount: u64, etf_share_p
         factory.entry_fee_bps
     );
     msg!("  Net deposit: {} raw units", deposit_amount_after_fees);
-    if vault_total_supply_before > 0 {
-        msg!("  Share price (stablecoin units per share): {}", etf_share_price);
-    }
+    msg!("  Share price (stablecoin units per share): {}", etf_share_price);
     msg!("  Vault tokens to mint: {} raw units", vault_tokens_to_mint);
 
     // Get stablecoin mint before any mutable borrows
@@ -718,6 +759,7 @@ pub fn finalize_redeem(
     ctx: Context<FinalizeRedeem>,
     vault_index: u32,
     vault_token_amount: u64,
+    etf_share_price: u64,
 ) -> Result<()> {
     // Accrue management fees before settling
     accrue_management_fees(&mut ctx.accounts.vault)?;
@@ -739,7 +781,6 @@ pub fn finalize_redeem(
     let user_vault_ai = ctx.accounts.user_vault_account.to_account_info();
     let stablecoin_mint_key = ctx.accounts.vault_stablecoin_account.mint;
 
-    let vault_total_assets_pre = ctx.accounts.vault.total_assets;
     let vault_total_supply_pre = ctx.accounts.vault.total_supply;
 
     // Validations
@@ -754,16 +795,15 @@ pub fn finalize_redeem(
         ErrorCode::InsufficientVaultTokens
     );
 
-    let total_assets = vault_total_assets_pre;
     let total_supply = vault_total_supply_pre;
     require!(total_supply > 0, ErrorCode::InvalidAmount);
 
-    // User's share in USDC terms
-    let user_share_usdc = (vault_token_amount as u128)
-        .checked_mul(total_assets as u128)
-        .unwrap()
-        .checked_div(total_supply as u128)
-        .unwrap() as u64;
+    // Compute gross payout from client-provided share price
+    // If share price is 0, payout will be 0
+    let scale: u128 = 10u128.pow(ctx.accounts.vault_mint.decimals as u32);
+    let user_share_usdc = ((vault_token_amount as u128)
+        .checked_mul(etf_share_price as u128).unwrap()
+        .checked_div(scale).unwrap()) as u64;
 
     // Calculate exit fee
     let exit_fee = (user_share_usdc as u128)
@@ -783,6 +823,9 @@ pub fn finalize_redeem(
     };
     let burn_cpi_ctx = CpiContext::new(token_program_ai.clone(), burn_cpi_accounts);
     token::burn(burn_cpi_ctx, vault_token_amount)?;
+
+    // Ensure vault has enough USDC to cover payouts
+    require!(ctx.accounts.vault_stablecoin_account.amount >= net_to_user, ErrorCode::InsufficientFunds);
 
     // Transfer fees from vault USDC to recipients
     if exit_fee > 0 {
@@ -837,181 +880,6 @@ pub fn finalize_redeem(
     msg!("✅ Finalize redeem completed");
     Ok(())
 }
-
-pub fn redeem(
-    ctx: Context<Redeem>,
-    vault_index: u32,
-    vault_token_amount: u64,
-) -> Result<()> {
-    // Accrue management fees before redeem path
-    accrue_management_fees(&mut ctx.accounts.vault)?;
-    msg!("🔄 Starting redeem process for vault #{}", vault_index);
-    msg!("🪙 Vault tokens to redeem: {} raw units", vault_token_amount);
-
-    // Get vault account info and values before creating any mutable references
-    let _vault_account_info = ctx.accounts.vault.to_account_info().clone();
-    let factory = &ctx.accounts.factory;
-    
-    // Get all values we need before mutable borrow
-    let vault_name = ctx.accounts.vault.vault_name.clone();
-    let vault_symbol = ctx.accounts.vault.vault_symbol.clone();
-    let vault_state = ctx.accounts.vault.state;
-    let vault_total_assets = ctx.accounts.vault.total_assets;
-    let vault_total_supply = ctx.accounts.vault.total_supply;
-    let _underlying_assets = ctx.accounts.vault.underlying_assets.clone();
-    let _vault_bump = ctx.accounts.vault.bump;
-    let _factory_key = ctx.accounts.factory.key();
-    let _stablecoin_mint = ctx.accounts.user_stablecoin_account.mint;
-    
-    // Get vault authority before mutable borrow
-    let vault_authority = ctx.accounts.vault.to_account_info();
-    
-    let vault = &mut ctx.accounts.vault;
-
-    msg!("🏦 Vault: {} ({})", vault_name, vault_symbol);
-    msg!("👤 User: {}", ctx.accounts.user.key());
-
-    // Validations
-    require!(vault_token_amount > 0, ErrorCode::InvalidAmount);
-    require!(vault_state == VaultState::Active, ErrorCode::VaultNotActive);
-    require!(
-        factory.state == FactoryState::Active,
-        ErrorCode::FactoryNotActive
-    );
-    require!(
-        ctx.accounts.user_vault_account.amount >= vault_token_amount,
-        ErrorCode::InsufficientVaultTokens
-    );
-
-    // Calculate the market value of the user's vault tokens
-    // This should be based on the current value of the underlying assets, not the vault's total assets
-    // For now, we'll use a simple calculation based on the vault's total assets
-    // TODO: Implement proper market value calculation based on underlying asset prices
-    let total_stablecoin_amount = (vault_token_amount as u128)
-        .checked_mul(vault_total_assets as u128)
-        .unwrap()
-        .checked_div(vault_total_supply as u128)
-        .unwrap() as u64;
-
-    // Calculate exit fee based on the stablecoin amount
-    let exit_fee = (total_stablecoin_amount as u128)
-        .checked_mul(factory.exit_fee_bps as u128)
-        .unwrap()
-        .checked_div(MAX_BPS as u128)
-        .unwrap() as u64;
-
-    // Calculate net redeem amount (only exit fee is deducted)
-    let stablecoin_amount_after_fees = total_stablecoin_amount.checked_sub(exit_fee).unwrap();
-
-    msg!("💸 Fee calculations:");
-    msg!("  Total stablecoin amount: {} raw units", total_stablecoin_amount);
-    msg!(
-        "  Exit fee: {} raw units ({} bps)",
-        exit_fee,
-        factory.exit_fee_bps
-    );
-    msg!("  Net stablecoin amount: {} raw units", stablecoin_amount_after_fees);
-
-    // Get all required data for CPI calls
-    let vault_bump = vault.bump;
-    let vault_key = vault.key();
-    let factory_key = ctx.accounts.factory.key();
-    let vault_index_bytes = vault_index.to_le_bytes();
-    let bump_array = [vault_bump];
-    
-    // Prepare seeds for CPI calls
-    let seeds: &[&[u8]] = &[
-        b"vault",
-        factory_key.as_ref(),
-        &vault_index_bytes,
-        &bump_array,
-    ];
-    let _binding = [seeds];
-
-    
-    // STEP 1: Transfer tokens from vault to user
-    msg!("🔄 Step 1: Transferring tokens from vault to user");
-    
-    let transfer_cpi_accounts = token::Transfer {
-        from: ctx.accounts.vault_stablecoin_account.to_account_info(),
-        to: ctx.accounts.user_stablecoin_account.to_account_info(),
-        authority: vault_authority,
-    };
-    let transfer_cpi_program = ctx.accounts.token_program.to_account_info();
-    let seeds: &[&[u8]] = &[
-        b"vault",
-        factory_key.as_ref(),
-        &vault_index_bytes,
-        &bump_array,
-    ];
-    let binding = [seeds];
-    let transfer_cpi_ctx = CpiContext::new_with_signer(transfer_cpi_program, transfer_cpi_accounts, &binding);
-    token::transfer(transfer_cpi_ctx, total_stablecoin_amount)?;
-    msg!("✅ Token transfer to user completed");
-
-    // STEP 2: Update vault state
-    msg!("📊 Step 2: Updating vault state");
-    msg!("  Previous total assets: {}", vault_total_assets);
-    msg!("  Previous total supply: {}", vault_total_supply);
-
-    vault.total_assets = vault_total_assets
-        .checked_sub(total_stablecoin_amount)
-        .unwrap();
-    vault.total_supply = vault_total_supply
-        .checked_sub(vault_token_amount)
-        .unwrap();
-
-    msg!("  New total assets: {}", vault.total_assets);
-    msg!("  New total supply: {}", vault.total_supply);
-
-    // STEP 3: Burn vault tokens from user
-    msg!("🔥 Step 3: Burning {} vault tokens from user", vault_token_amount);
-    let burn_cpi_accounts = token::Burn {
-        mint: ctx.accounts.vault_mint.to_account_info(),
-        from: ctx.accounts.user_vault_account.to_account_info(),
-        authority: ctx.accounts.user.to_account_info(),
-    };
-    let burn_cpi_program = ctx.accounts.token_program.to_account_info();
-    let burn_cpi_ctx = CpiContext::new(burn_cpi_program, burn_cpi_accounts);
-    token::burn(burn_cpi_ctx, vault_token_amount)?;
-    msg!("✅ Vault tokens burned successfully");
-
-    // STEP 4: Transfer exit fee to factory fee recipient
-    if exit_fee > 0 {
-        msg!(
-            "🔄 Step 4: Transferring exit fee: {} raw units to factory fee recipient",
-            exit_fee
-        );
-        let exit_fee_cpi_accounts = token::Transfer {
-            from: ctx.accounts.user_stablecoin_account.to_account_info(),
-            to: ctx
-                .accounts
-                .fee_recipient_stablecoin_account
-                .to_account_info(),
-            authority: ctx.accounts.user.to_account_info(),
-        };
-        let exit_fee_cpi_program = ctx.accounts.token_program.to_account_info();
-        let exit_fee_cpi_ctx = CpiContext::new(exit_fee_cpi_program, exit_fee_cpi_accounts);
-        token::transfer(exit_fee_cpi_ctx, exit_fee)?;
-        msg!("✅ Exit fee transfer completed");
-    }
-
-
-    // Emit event
-    emit!(RedeemEvent {
-        vault: vault_key,
-        user: ctx.accounts.user.key(),
-        stablecoin_mint: ctx.accounts.vault_stablecoin_account.mint,
-        vault_tokens_burned: vault_token_amount,
-        exit_fee,
-        stablecoin_amount_redeemed: stablecoin_amount_after_fees,
-        timestamp: Clock::get()?.unix_timestamp,
-    });
-
-    msg!("🎉 Redeem completed successfully!");
-    Ok(())
-}
-
 
 pub fn set_vault_paused(ctx: Context<SetVaultPaused>, _vault_index: u32, paused: bool) -> Result<()> {
     let vault = &mut ctx.accounts.vault;

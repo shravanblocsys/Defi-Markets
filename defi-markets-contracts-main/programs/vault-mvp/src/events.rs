@@ -43,6 +43,13 @@ pub struct FactoryFeesUpdated {
 }
 
 #[event]
+pub struct FactoryAdminUpdated {
+    pub previous_admin: Pubkey,
+    pub new_admin: Pubkey,
+    pub timestamp: i64,
+}
+
+#[event]
 pub struct DepositEvent {
     pub vault: Pubkey,
     pub user: Pubkey,

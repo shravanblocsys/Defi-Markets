@@ -503,9 +503,7 @@ export const chartApi = {
           totalUsdLamports: number;
         }>;
       };
-    }>(
-      `/charts/vaults/total-usd?vaultIds=${vaultIds.join(",")}`
-    ),
+    }>(`/charts/vaults/total-usd?vaultIds=${vaultIds.join(",")}`),
 };
 
 // Portfolio API
@@ -697,7 +695,11 @@ export const transactionEventApi = {
       }
     ),
 
-  adminSwapByVault: (params: { vaultIndex: number; amountInRaw: string }) =>
+  adminSwapByVault: (params: {
+    vaultIndex: number;
+    amountInRaw: string;
+    etfSharePriceRaw?: string;
+  }) =>
     apiRequest<
       ApiResponse<{
         swapExecuted: boolean;
@@ -731,7 +733,11 @@ export const transactionEventApi = {
       }
     ),
 
-  redeemSwapAdmin: (params: { vaultIndex: number; vaultTokenAmount: string }) =>
+  redeemSwapAdmin: (params: {
+    vaultIndex: number;
+    vaultTokenAmount: string;
+    etfSharePriceRaw?: string;
+  }) =>
     apiRequest<ApiResponse<RedeemSwapAdminData>>(
       "/tx-event-management/redeem-swap",
       {

@@ -48,7 +48,7 @@ export class TxEventManagementService {
     try {
       const mintInfo = await connection.getAccountInfo(mint);
       if (!mintInfo) {
-        console.log(
+        this.logger.log(
           `Mint ${mint.toBase58()} not found, defaulting to TOKEN_PROGRAM_ID`
         );
         return TOKEN_PROGRAM_ID;
@@ -56,17 +56,15 @@ export class TxEventManagementService {
 
       // Check if it's Token-2022 program
       if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
-        console.log(
-          `Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`
-        );
+        this.logger.log(`Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`);
         return TOKEN_2022_PROGRAM_ID;
       }
 
       // Default to SPL Token program
-      console.log(`Using TOKEN_PROGRAM_ID for mint ${mint.toBase58()}`);
+      this.logger.log(`Using TOKEN_PROGRAM_ID for mint ${mint.toBase58()}`);
       return TOKEN_PROGRAM_ID;
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error determining token program for ${mint.toBase58()}: ${
           error.message
         }, defaulting to TOKEN_PROGRAM_ID`
@@ -111,7 +109,7 @@ export class TxEventManagementService {
    * Hardcoded RPC and Jupiter endpoints for now; reads SOLANA_ADMIN_PRIVATE_KEY when available.
    */
   async swap(dto: SwapDto): Promise<any> {
-    console.log(`[DEBUG] Swap function called with dto:`, dto);
+    this.logger.log(`[DEBUG] Swap function called with dto:`, dto);
 
     const PROGRAM_ID = new PublicKey(
       this.configService.get("SOLANA_VAULT_FACTORY_ADDRESS")
@@ -126,7 +124,7 @@ export class TxEventManagementService {
       this.configService.get("JUPITER_SWAP_API") ||
       "https://lite-api.jup.ag/swap/v1/swap-instructions";
 
-    console.log(
+    this.logger.log(
       `[DEBUG] Jupiter APIs - Quote: ${JUPITER_QUOTE_API}, Swap: ${JUPITER_SWAP_API}`
     );
 
@@ -139,13 +137,13 @@ export class TxEventManagementService {
     if (!adminKeyRaw) {
       throw new BadRequestException("Missing SOLANA_ADMIN_PRIVATE_KEY");
     }
-    console.log(`[DEBUG] Admin key raw length: ${adminKeyRaw.length}`);
+    this.logger.log(`[DEBUG] Admin key raw length: ${adminKeyRaw.length}`);
 
     let adminKeypair: Keypair;
     try {
       const secret = new Uint8Array(JSON.parse(adminKeyRaw));
       adminKeypair = Keypair.fromSecretKey(secret);
-      console.log(
+      this.logger.log(
         `[DEBUG] Admin keypair created successfully, public key: ${adminKeypair.publicKey.toBase58()}`
       );
     } catch (e) {
@@ -169,7 +167,7 @@ export class TxEventManagementService {
         try {
           return await fn();
         } catch (error) {
-          console.log(
+          this.logger.log(
             `[DEBUG] Retry attempt ${i + 1}/${maxRetries} failed:`,
             error.message
           );
@@ -179,9 +177,7 @@ export class TxEventManagementService {
           const baseDelay = 1000 * Math.pow(2, i);
           const jitter = Math.random() * 1000;
           const delay = baseDelay + jitter;
-          console.log(
-            `[DEBUG] Waiting ${Math.round(delay)}ms before retry...`
-          );
+          this.logger.log(`[DEBUG] Waiting ${Math.round(delay)}ms before retry...`);
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -194,13 +190,13 @@ export class TxEventManagementService {
       amount: bigint
     ) => {
       const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64`;
-      console.log(`[DEBUG] Jupiter Quote URL: ${url}`);
+      this.logger.log(`[DEBUG] Jupiter Quote URL: ${url}`);
 
       const res = await fetch(url as any);
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Quote Response Status: ${res.status} ${res.statusText}`
       );
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Quote Response Headers:`,
         Object.fromEntries(res.headers.entries())
       );
@@ -212,10 +208,10 @@ export class TxEventManagementService {
       }
 
       const responseText = await res.text();
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Quote Response Text Length: ${responseText.length}`
       );
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Quote Response Text Preview: ${responseText.substring(
           0,
           500
@@ -229,7 +225,7 @@ export class TxEventManagementService {
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log(`[DEBUG] Jupiter Quote Parsed Successfully`);
+        this.logger.log(`[DEBUG] Jupiter Quote Parsed Successfully`);
       } catch (parseError) {
         console.error(`[DEBUG] Jupiter Quote Parse Error:`, parseError);
         throw new Error(
@@ -254,8 +250,8 @@ export class TxEventManagementService {
         userPublicKey: userPublicKey.toBase58(),
         destinationTokenAccount: destinationTokenAccount.toBase58(),
       };
-      console.log(`[DEBUG] Jupiter Instructions URL: ${JUPITER_SWAP_API}`);
-      console.log(
+      this.logger.log(`[DEBUG] Jupiter Instructions URL: ${JUPITER_SWAP_API}`);
+      this.logger.log(
         `[DEBUG] Jupiter Instructions Body:`,
         JSON.stringify(body, null, 2)
       );
@@ -269,10 +265,10 @@ export class TxEventManagementService {
         } as any
       );
 
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Instructions Response Status: ${res.status} ${res.statusText}`
       );
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Instructions Response Headers:`,
         Object.fromEntries(res.headers.entries())
       );
@@ -284,10 +280,10 @@ export class TxEventManagementService {
       }
 
       const responseText = await res.text();
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Instructions Response Text Length: ${responseText.length}`
       );
-      console.log(
+      this.logger.log(
         `[DEBUG] Jupiter Instructions Response Text Preview: ${responseText.substring(
           0,
           500
@@ -301,7 +297,7 @@ export class TxEventManagementService {
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log(`[DEBUG] Jupiter Instructions Parsed Successfully`);
+        this.logger.log(`[DEBUG] Jupiter Instructions Parsed Successfully`);
       } catch (parseError) {
         console.error(`[DEBUG] Jupiter Instructions Parse Error:`, parseError);
         throw new Error(
@@ -350,7 +346,7 @@ export class TxEventManagementService {
       }, new Array<AddressLookupTableAccount>());
     };
 
-    const { vaultIndex, amountInRaw } = dto;
+    const { vaultIndex, amountInRaw, etfSharePriceRaw } = dto;
     if (vaultIndex == null || Number.isNaN(Number(vaultIndex))) {
       throw new BadRequestException("Invalid vaultIndex");
     }
@@ -358,6 +354,14 @@ export class TxEventManagementService {
     if (requestedAmount <= BigInt(0)) {
       throw new BadRequestException("amountInRaw must be > 0");
     }
+    const sharePriceRaw = BigInt(etfSharePriceRaw);
+    if (sharePriceRaw < BigInt(0)) {
+      throw new BadRequestException("etfSharePriceRaw must be >= 0");
+    }
+
+    this.logger.log(
+      `[DEBUG] Swap inputs - vaultIndex: ${vaultIndex}, amountInRaw: ${amountInRaw} (already net of entry fees), etfSharePriceRaw: ${etfSharePriceRaw}`
+    );
 
     // Derive PDAs
     const [factory] = PublicKey.findProgramAddressSync(
@@ -378,11 +382,11 @@ export class TxEventManagementService {
     );
 
     // Fetch vault state to get underlying assets
-    console.log(
+    this.logger.log(
       `[DEBUG] Fetching vault account for vault: ${vault.toBase58()}`
     );
     const vaultAccount: any = await (program as any).account.vault.fetch(vault);
-    console.log(
+    this.logger.log(
       `[DEBUG] Vault account fetched, underlying assets:`,
       vaultAccount.underlyingAssets
     );
@@ -393,7 +397,7 @@ export class TxEventManagementService {
       mint: new PublicKey(ua.mintAddress || ua.mint_address || ua.mint),
       bps: Number(ua.mintBps || ua.mint_bps || ua.pctBps || ua.bps),
     }));
-    console.log(
+    this.logger.log(
       `[DEBUG] Processed underlying assets:`,
       underlying.map((u) => ({ mint: u.mint.toBase58(), bps: u.bps }))
     );
@@ -401,19 +405,24 @@ export class TxEventManagementService {
     if (!underlying.length)
       throw new BadRequestException("No underlying assets configured");
 
-    // Read vault USDC balance like in admin_swaps.ts and clamp the requested amount
+    // Read vault USDC balance and clamp the amount (amountInRaw is already net of entry fees)
     const vaultUSDC = await getAccount(connection, vaultUSDCAccount);
     const totalUSDC = BigInt(vaultUSDC.amount.toString());
     if (totalUSDC === BigInt(0)) {
       return {
         vaultIndex,
         amountInRaw: requestedAmount.toString(),
+        etfSharePriceRaw: etfSharePriceRaw,
         swaps: [],
         note: "Vault USDC balance is 0; nothing to swap.",
       };
     }
+    // Use amountInRaw directly (already net of entry fees) for swapping, clamped to available balance
     const amountToUse =
       requestedAmount > totalUSDC ? totalUSDC : requestedAmount;
+    this.logger.log(
+      `[DEBUG] Amount to use for swapping: ${amountToUse.toString()} (amountInRaw: ${requestedAmount.toString()}, available: ${totalUSDC.toString()})`
+    );
 
     // Ensure admin USDC ATA
     const adminUSDC = await getAssociatedTokenAddress(
@@ -429,14 +438,14 @@ export class TxEventManagementService {
     for (let i = 0; i < underlying.length; i++) {
       const { mint: assetMint, bps } = underlying[i];
       const assetAmount = (amountToUse * BigInt(bps)) / BigInt(10000);
-      console.log(
+      this.logger.log(
         `[DEBUG] Processing asset ${i + 1}/${
           underlying.length
         }: ${assetMint.toBase58()}, bps: ${bps}, amount: ${assetAmount.toString()}`
       );
 
       if (assetAmount === BigInt(0)) {
-        console.log(
+        this.logger.log(
           `[DEBUG] Skipping asset ${assetMint.toBase58()} - amount is 0`
         );
         continue;
@@ -457,7 +466,7 @@ export class TxEventManagementService {
       );
       const vaultAssetInfo = await connection.getAccountInfo(vaultAssetAccount);
       if (!vaultAssetInfo) {
-        console.log(
+        this.logger.log(
           `Creating ATA for ${assetMint.toBase58()} with token program ${tokenProgramId.toBase58()}`
         );
         const createIx = createAssociatedTokenAccountInstruction(
@@ -472,7 +481,7 @@ export class TxEventManagementService {
           new (await import("@solana/web3.js")).Transaction().add(createIx),
           []
         );
-        console.log(`ATA created successfully for ${assetMint.toBase58()}`);
+        this.logger.log(`ATA created successfully for ${assetMint.toBase58()}`);
       }
 
       // Transfer USDC from vault to admin
@@ -490,7 +499,7 @@ export class TxEventManagementService {
         .rpc();
 
       // Jupiter swap USDC -> asset into vault's ATA
-      console.log(
+      this.logger.log(
         `[DEBUG] Getting Jupiter quote for ${STABLECOIN_MINT.toBase58()} -> ${assetMint.toBase58()}, amount: ${assetAmount.toString()}`
       );
       let quote;
@@ -498,9 +507,9 @@ export class TxEventManagementService {
         quote = await retryWithBackoff(() =>
           getJupiterQuote(STABLECOIN_MINT, assetMint, assetAmount)
         );
-        console.log(`[DEBUG] Jupiter quote received successfully`);
+        this.logger.log(`[DEBUG] Jupiter quote received successfully`);
       } catch (quoteError) {
-        console.log(
+        this.logger.log(
           `[DEBUG] Failed to get quote for ${assetMint.toBase58()}: ${
             quoteError.message
           }. Skipping this asset.`
@@ -508,7 +517,7 @@ export class TxEventManagementService {
         continue; // Skip this asset if we can't get a quote
       }
 
-      console.log(`[DEBUG] Getting Jupiter instructions for swap`);
+      this.logger.log(`[DEBUG] Getting Jupiter instructions for swap`);
       let instructions;
       try {
         instructions = await retryWithBackoff(() =>
@@ -518,9 +527,9 @@ export class TxEventManagementService {
             vaultAssetAccount
           )
         );
-        console.log(`[DEBUG] Jupiter instructions received successfully`);
+        this.logger.log(`[DEBUG] Jupiter instructions received successfully`);
       } catch (instructionsError) {
-        console.log(
+        this.logger.log(
           `[DEBUG] Failed to get instructions for ${assetMint.toBase58()}: ${
             instructionsError.message
           }. Skipping this asset.`
@@ -541,15 +550,13 @@ export class TxEventManagementService {
           BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
 
         if (isComplexSwap) {
-          console.log(`[DEBUG] Complex swap detected, using high CU limit`);
+          this.logger.log(`[DEBUG] Complex swap detected, using high CU limit`);
           return {
             units: 2_000_000, // 2M CU for complex swaps
             microLamports: 1000, // Higher priority fee
           };
         } else {
-          console.log(
-            `[DEBUG] Simple swap detected, using standard CU limit`
-          );
+          this.logger.log(`[DEBUG] Simple swap detected, using standard CU limit`);
           return {
             units: 1_500_000, // 1.5M CU for simple swaps
             microLamports: 500, // Lower priority fee
@@ -590,7 +597,7 @@ export class TxEventManagementService {
           )
         : [];
 
-      console.log(
+      this.logger.log(
         `[DEBUG] Building transaction for ${assetMint.toBase58()} with ${
           swapIxs.length
         } instructions`
@@ -605,7 +612,7 @@ export class TxEventManagementService {
       const vtx = new VersionedTransaction(messageV0);
       const signed = await adminWallet.signTransaction(vtx);
 
-      console.log(
+      this.logger.log(
         `[DEBUG] Sending swap transaction for ${assetMint.toBase58()}`
       );
       const sig = await retryWithBackoff(
@@ -616,16 +623,16 @@ export class TxEventManagementService {
           }),
         5
       );
-      console.log(`[DEBUG] Swap transaction sent: ${sig}`);
+      this.logger.log(`[DEBUG] Swap transaction sent: ${sig}`);
 
-      console.log(
+      this.logger.log(
         `[DEBUG] Confirming swap transaction for ${assetMint.toBase58()}`
       );
       await retryWithBackoff(
         () => connection.confirmTransaction(sig, "processed"),
         3
       );
-      console.log(`[DEBUG] Swap transaction confirmed: ${sig}`);
+      this.logger.log(`[DEBUG] Swap transaction confirmed: ${sig}`);
 
       // Create history record for swap per asset (admin as performer if available)
       try {
@@ -653,9 +660,7 @@ export class TxEventManagementService {
           );
         }
       } catch (historyError) {
-        console.log(
-          `Failed to create swap history: ${historyError.message}`
-        );
+        this.logger.log(`Failed to create swap history: ${historyError.message}`);
       }
 
       results.push({
@@ -668,7 +673,7 @@ export class TxEventManagementService {
       // Add delay between assets to avoid rate limiting
       if (i < underlying.length - 1) {
         const delay = 2000 + Math.random() * 1000; // 2-3 seconds
-        console.log(
+        this.logger.log(
           `[DEBUG] Waiting ${Math.round(
             delay
           )}ms before processing next asset...`
@@ -683,16 +688,17 @@ export class TxEventManagementService {
       amountRequested: requestedAmount.toString(),
       amountUsed: amountToUse.toString(),
       vaultUsdcBalance: totalUSDC.toString(),
+      etfSharePriceRaw: etfSharePriceRaw,
       swaps: results,
     };
   }
 
-  /**
+  /**  
    * Admin redeem-swap: withdraw underlying to admin, swap to USDC into vault USDC PDA
    */
   async redeemSwapAdmin(dto: RedeemSwapAdminDto): Promise<any> {
     const PROGRAM_ID = new PublicKey(
-      "5tAdLifeaGj3oUVVpr7gG5ntjW6c2Lg3sY2ftBCi8MkZ"
+      "BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB"
     );
     const STABLECOIN_MINT = new PublicKey(
       "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
@@ -708,8 +714,8 @@ export class TxEventManagementService {
       this.configService.get("SOLANA_RPC_URL") ||
       "https://api.mainnet-beta.solana.com";
     const connection = new Connection(rpcUrl, "processed");
-    console.log(`🌐 Using RPC URL: ${rpcUrl}`);
-    console.log(`🔗 Connection commitment: processed`);
+    this.logger.log(`🌐 Using RPC URL: ${rpcUrl}`);
+    this.logger.log(`🔗 Connection commitment: processed`);
 
     const adminKeyRaw = this.configService.get("SOLANA_ADMIN_PRIVATE_KEY");
     if (!adminKeyRaw)
@@ -859,11 +865,11 @@ export class TxEventManagementService {
     };
 
     const { vaultIndex, vaultTokenAmount } = dto;
-    console.log("[redeemSwapAdmin] input dto", {
+    this.logger.log("[redeemSwapAdmin] input dto", {
       vaultIndex,
       vaultTokenAmount,
     });
-    console.log("[program id]", PROGRAM_ID);
+    this.logger.log("[program id]", PROGRAM_ID);
     const [factory] = PublicKey.findProgramAddressSync(
       [Buffer.from("factory_v2")],
       PROGRAM_ID
@@ -880,18 +886,16 @@ export class TxEventManagementService {
       [Buffer.from("vault_stablecoin_account"), vault.toBuffer()],
       PROGRAM_ID
     );
-    console.log("[redeemSwapAdmin] PDAs", {
+    this.logger.log("[redeemSwapAdmin] PDAs", {
       factory: factory.toBase58(),
       vault: vault.toBase58(),
       vaultUSDC: vaultUSDC.toBase58(),
     });
 
     // Fetch vault account and underlying
-    console.log(
-      `\n🔍 Fetching vault account for vault: ${vault.toBase58()}`
-    );
+    this.logger.log(`\n🔍 Fetching vault account for vault: ${vault.toBase58()}`);
     const vaultAccount: any = await (program as any).account.vault.fetch(vault);
-    console.log(
+    this.logger.log(
       `📋 Raw vault account data:`,
       JSON.stringify(vaultAccount, null, 2)
     );
@@ -916,18 +920,18 @@ export class TxEventManagementService {
       }
     };
 
-    console.log("\n🔍 Reading Vault Allocation for Redeem Swap:");
-    console.log(`📊 Vault State:`);
-    console.log(
+    this.logger.log("\n🔍 Reading Vault Allocation for Redeem Swap:");
+    this.logger.log(`📊 Vault State:`);
+    this.logger.log(
       `  Total Assets: ${vaultAccount.totalAssets?.toString?.()} ($${(
         Number(vaultAccount.totalAssets) / 1_000_000
       ).toFixed(6)} USD)`
     );
-    console.log(`  Management Fees: ${vaultAccount.managementFees} bps`);
-    console.log(`  Admin: ${vaultAccount.admin?.toBase58?.()}`);
+    this.logger.log(`  Management Fees: ${vaultAccount.managementFees} bps`);
+    this.logger.log(`  Admin: ${vaultAccount.admin?.toBase58?.()}`);
 
     // Get underlying assets with detailed balance information
-    console.log(`\n🏦 Underlying Assets:`);
+    this.logger.log(`\n🏦 Underlying Assets:`);
     const underlying: {
       mint: PublicKey;
       bps: number;
@@ -942,9 +946,9 @@ export class TxEventManagementService {
       );
 
       if (mintAddress.toBase58() !== "11111111111111111111111111111111") {
-        console.log(`  Asset ${i}:`);
-        console.log(`    Mint: ${mintAddress.toBase58()}`);
-        console.log(
+        this.logger.log(`  Asset ${i}:`);
+        this.logger.log(`    Mint: ${mintAddress.toBase58()}`);
+        this.logger.log(
           `    Allocation: ${
             asset.mintBps || asset.mint_bps || asset.pctBps || asset.bps
           } bps (${(
@@ -968,22 +972,20 @@ export class TxEventManagementService {
             ASSOCIATED_TOKEN_PROGRAM_ID
           );
 
-          console.log(`    Token Account: ${tokenAccount.toBase58()}`);
-          console.log(`    Token Program: ${assetTokenProgram.toBase58()}`);
+          this.logger.log(`    Token Account: ${tokenAccount.toBase58()}`);
+          this.logger.log(`    Token Program: ${assetTokenProgram.toBase58()}`);
 
           const accountInfo = await getAccount(connection, tokenAccount);
           balance = BigInt(accountInfo.amount.toString());
           decimals = await getTokenDecimals(mintAddress);
 
-          console.log(
+          this.logger.log(
             `    Balance: ${balance.toString()} (${(
               Number(balance) / Math.pow(10, decimals)
             ).toFixed(6)} tokens)`
           );
         } catch (e) {
-          console.log(
-            `    Balance: Account not found or error - ${e.message}`
-          );
+          this.logger.log(`    Balance: Account not found or error - ${e.message}`);
         }
 
         underlying.push({
@@ -998,21 +1000,21 @@ export class TxEventManagementService {
     }
 
     // Get vault stablecoin balance
-    console.log(`\n💰 Vault Stablecoin Balance:`);
+    this.logger.log(`\n💰 Vault Stablecoin Balance:`);
     try {
       const stableBalance = await getAccount(connection, vaultUSDC);
       const stablecoinMint = stableBalance.mint;
       const stablecoinDecimals = await getTokenDecimals(stablecoinMint);
-      console.log(
+      this.logger.log(
         `  ${stablecoinMint.toBase58()}: ${stableBalance.amount.toString()} (${(
           Number(stableBalance.amount) / Math.pow(10, stablecoinDecimals)
         ).toFixed(6)} tokens)`
       );
     } catch (e) {
-      console.log(`  Stablecoin Balance: Account not found or error`);
+      this.logger.log(`  Stablecoin Balance: Account not found or error`);
     }
 
-    console.log("\n[redeemSwapAdmin] vaultAccount totals", {
+    this.logger.log("\n[redeemSwapAdmin] vaultAccount totals", {
       totalAssets: vaultAccount.totalAssets?.toString?.(),
       totalSupply: vaultAccount.totalSupply?.toString?.(),
       underlyingCount: underlying.length,
@@ -1026,7 +1028,7 @@ export class TxEventManagementService {
 
     // Safety check: env admin must be factory admin to sign withdraws
     if (!adminWallet.publicKey.equals(factoryAdminPubkey)) {
-      console.log(
+      this.logger.log(
         `SOLANA_ADMIN_PRIVATE_KEY pubkey ${adminWallet.publicKey.toBase58()} does not match factory admin ${factoryAdminPubkey.toBase58()}. Withdraw will fail constraints.`
       );
     }
@@ -1059,18 +1061,31 @@ export class TxEventManagementService {
 
     // IMPORTANT: Use FULL input amount for calculations - NO fee deduction here!
     // Smart contract will handle fee deduction during FinalizeRedeem
-    const sharePriceUSD = 1; // 1 share = 1 USDC unit
-    const totalValueUSD = Number(requestedShares); // Use FULL requested amount
+    // Compute total USDC value as (shares * sharePriceRaw) / 1e6 (both 6 decimals)
+    const sharePriceRaw = BigInt((dto as any).etfSharePriceRaw || "0");
+    if (sharePriceRaw === BigInt(0)) {
+      throw new BadRequestException(
+        "etfSharePriceRaw is required for redeem-swap"
+      );
+    }
+    const totalValueUSDCraw =
+      (requestedShares * sharePriceRaw) / BigInt(1_000_000);
+    const sharePriceUSD = Number(sharePriceRaw) / 1_000_000; // for logs only
+    const totalValueUSDCrawNumber = Number(totalValueUSDCraw); // raw USDC units (6 decimals)
+    const totalValueUSDActual = totalValueUSDCrawNumber / 1_000_000; // actual USD value
 
-    console.log(
+    this.logger.log(
       "[redeemSwapAdmin] FULL AMOUNT CALCULATION (no pre-deduction)",
       {
         inputVaultTokenAmount: vaultTokenAmount,
         requestedShares: requestedShares.toString(),
         totalAssets: totalAssets.toString(),
         totalSupply: totalSupply.toString(),
-        sharePriceUSD: sharePriceUSD.toString(),
-        totalValueUSD: totalValueUSD.toString(),
+        sharePriceRaw: sharePriceRaw.toString(),
+        sharePriceUSD: sharePriceUSD.toFixed(6),
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        calculation: `(${requestedShares.toString()} shares × ${sharePriceUSD.toFixed(6)} USDC/share) = ${totalValueUSDActual.toFixed(6)} USDC`,
         note: "Using FULL amount - smart contract will deduct fees later",
       }
     );
@@ -1125,25 +1140,27 @@ export class TxEventManagementService {
 
       // Calculate USD allocation for this asset based on allocation percentage
       // Using FULL input amount - no fee deduction here!
+      // totalValueUSDCrawNumber is in raw USDC units (6 decimals), so allocation is also in raw units
       const assetUSDAllocation = Math.floor(
-        (totalValueUSD * asset.bps) / 10000
+        (totalValueUSDCrawNumber * asset.bps) / 10000
       );
+      const assetUSDAllocationActual = assetUSDAllocation / 1_000_000; // actual USD value
 
-      console.log(`[redeemSwapAdmin] Asset ${i} allocation calculation:`, {
+      this.logger.log(`[redeemSwapAdmin] Asset ${i} allocation calculation:`, {
         assetMint: asset.mint.toBase58(),
         bps: asset.bps,
-        totalValueUSD: totalValueUSD,
-        assetUSDAllocation: assetUSDAllocation,
-        calculation: `(${totalValueUSD} * ${asset.bps}) / 10000 = ${assetUSDAllocation}`,
-        note: "Using FULL input amount for allocation",
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        assetUSDAllocationRaw: assetUSDAllocation.toString(),
+        assetUSDAllocationActual: assetUSDAllocationActual.toFixed(6),
+        calculation: `(${totalValueUSDCrawNumber.toString()} raw USDC × ${asset.bps} bps) / 10000 = ${assetUSDAllocation.toString()} raw USDC (${assetUSDAllocationActual.toFixed(6)} USDC)`,
+        note: "Using FULL input amount for allocation - share price IS being used",
       });
 
       // Get real-time price for this asset (price per 1 token in USDC)
       const assetPriceUSD = await getAssetPriceUSD(asset.mint);
       if (assetPriceUSD === BigInt(0)) {
-        console.log(
-          `Skipping ${asset.mint.toBase58()} - unable to get price`
-        );
+        this.logger.log(`Skipping ${asset.mint.toBase58()} - unable to get price`);
         continue;
       }
 
@@ -1165,7 +1182,7 @@ export class TxEventManagementService {
       // For program compatibility, use targetByAllocation name but with price-based value
       const targetByAllocation = withdrawAmount; // This is now the price-calculated amount
 
-      console.log("[redeemSwapAdmin] asset leg (price-based)", {
+      this.logger.log("[redeemSwapAdmin] asset leg (price-based)", {
         assetMint: asset.mint.toBase58(),
         vaultAssetAta: vaultAsset.toBase58(),
         vaultAssetAmount: vaultAssetAmount.toString(),
@@ -1240,12 +1257,12 @@ export class TxEventManagementService {
           quote && (quote.outAmount || quote.otherAmountThreshold)
             ? quote.outAmount || quote.otherAmountThreshold
             : undefined;
-        console.log("[redeemSwapAdmin] quote", {
+        this.logger.log("[redeemSwapAdmin] quote", {
           inputMint: asset.mint.toBase58(),
           outAmount,
         });
       } catch (quoteError) {
-        console.log(
+        this.logger.log(
           `[redeemSwapAdmin] Failed to get quote for ${asset.mint.toBase58()}: ${
             quoteError.message
           }. Skipping this asset.`
@@ -1259,7 +1276,7 @@ export class TxEventManagementService {
           getJupiterInstructions(quote, factoryAdminPubkey, vaultUSDC)
         );
       } catch (instructionsError) {
-        console.log(
+        this.logger.log(
           `[redeemSwapAdmin] Failed to get instructions for ${asset.mint.toBase58()}: ${
             instructionsError.message
           }. Skipping this asset.`
@@ -1276,7 +1293,7 @@ export class TxEventManagementService {
           BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
 
         if (isComplexSwap) {
-          console.log(
+          this.logger.log(
             `[redeemSwapAdmin] Complex swap detected, using high CU limit`
           );
           return {
@@ -1284,7 +1301,7 @@ export class TxEventManagementService {
             microLamports: 1000, // Higher priority fee
           };
         } else {
-          console.log(
+          this.logger.log(
             `[redeemSwapAdmin] Simple swap detected, using standard CU limit`
           );
           return {
@@ -1313,7 +1330,7 @@ export class TxEventManagementService {
       swapIxs.push(deserializeInstruction(instructions.swapInstruction));
       if (instructions.cleanupInstruction)
         swapIxs.push(deserializeInstruction(instructions.cleanupInstruction));
-      console.log(
+      this.logger.log(
         `[redeemSwapAdmin] Building transaction for ${asset.mint.toBase58()} with ${
           swapIxs.length
         } instructions`
@@ -1366,7 +1383,7 @@ export class TxEventManagementService {
           sig
         );
       } catch (e) {
-        console.log(`Failed to write per-leg history: ${e?.message}`);
+        this.logger.log(`Failed to write per-leg history: ${e?.message}`);
       }
 
       // Add delay between assets to avoid rate limiting
@@ -1389,32 +1406,39 @@ export class TxEventManagementService {
     const vaultUsdcAcc = await getAccount(connection, vaultUSDC);
     const vaultUsdcBalance: bigint = BigInt(vaultUsdcAcc.amount.toString());
 
-    // In price-based mode, calculate required USDC (1 share = 1 USDC unit)
-    const sharePriceAfter = 1; // 1 share = 1 USDC unit
-    const requiredUsdc = requestedShares; // Direct conversion since 1 share = 1 USDC
+    // Calculate required USDC using the provided share price (both 6 decimals)
+    // requiredUsdc = (requestedShares * sharePriceRaw) / 1e6
+    const requiredUsdc = (requestedShares * sharePriceRaw) / BigInt(1_000_000);
+    // Default adjusted amount in SHARES (not USDC): start with the requested shares
     let adjustedVaultTokenAmount = requestedShares;
 
-    // If vault USDC balance is insufficient, adjust the redeemable amount
+    // If vault USDC balance is insufficient, adjust the redeemable SHARES
+    // adjustedShares = floor(vaultUsdcBalance * 1e6 / sharePriceRaw)
     if (vaultUsdcBalance < requiredUsdc) {
-      adjustedVaultTokenAmount = vaultUsdcBalance; // Can only redeem what's available in USDC
+      adjustedVaultTokenAmount =
+        (vaultUsdcBalance * BigInt(1_000_000)) / sharePriceRaw;
     }
 
-    console.log("[redeemSwapAdmin] post-swap state (price-based)", {
+    this.logger.log("[redeemSwapAdmin] post-swap state (price-based)", {
       totalAssetsAfter: totalAssetsAfter.toString(),
       totalSupplyAfter: totalSupplyAfter.toString(),
-      sharePriceAfter: sharePriceAfter.toString(),
+      sharePriceRaw: sharePriceRaw.toString(),
       vaultUsdcBalance: vaultUsdcBalance.toString(),
       requiredUsdc: requiredUsdc.toString(),
       adjustedVaultTokenAmount: adjustedVaultTokenAmount.toString(),
     });
 
     // Summary: Confirm we used FULL input amount
-    console.log("[redeemSwapAdmin] REDEEM SWAP SUMMARY:", {
+    this.logger.log("[redeemSwapAdmin] REDEEM SWAP SUMMARY:", {
       inputAmount: vaultTokenAmount,
-      totalValueUsed: totalValueUSD,
+      requestedShares: requestedShares.toString(),
+      sharePriceRaw: sharePriceRaw.toString(),
+      sharePriceUSD: sharePriceUSD.toFixed(6),
+      totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+      totalValueUSDActual: totalValueUSDActual.toFixed(6),
       swapsExecuted: results.length,
       totalUSDCGenerated: vaultUsdcBalance.toString(),
-      note: "FULL input amount used - smart contract will deduct fees during FinalizeRedeem",
+      note: "FULL input amount used with share price - smart contract will deduct fees during FinalizeRedeem",
     });
 
     // History: batch completed (use existing action name)
@@ -1435,9 +1459,7 @@ export class TxEventManagementService {
         }
       );
     } catch (e) {
-      console.log(
-        `Failed to write batch-completed history: ${e?.message}`
-      );
+      this.logger.log(`Failed to write batch-completed history: ${e?.message}`);
     }
 
     await this.clearCache();
@@ -1448,8 +1470,9 @@ export class TxEventManagementService {
       vaultUsdcBalance: vaultUsdcBalance.toString(),
       requiredUsdc: requiredUsdc.toString(),
       adjustedVaultTokenAmount: adjustedVaultTokenAmount.toString(),
-      sharePriceAfter: sharePriceAfter.toString(),
-      totalValueUSD: totalValueUSD.toString(),
+      sharePriceAfter: (Number(sharePriceRaw) / 1_000_000).toString(),
+      totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+      totalValueUSDActual: totalValueUSDActual.toFixed(6),
       mode: "price-based",
     };
   }
@@ -1460,7 +1483,7 @@ export class TxEventManagementService {
         transactionDto;
 
       // Reading transaction from blockchain
-      console.log(`Fetching transaction: ${transactionSignature}`);
+      this.logger.log(`Fetching transaction: ${transactionSignature}`);
 
       // Fetch transaction details from Solana blockchain
       // Let Solana RPC validate the signature format and existence
@@ -1478,11 +1501,11 @@ export class TxEventManagementService {
 
       // Extract and decode program data
       const programData = this.extractProgramLogs(transaction);
-      console.log("programData", programData);
+      this.logger.log("programData", programData);
 
       // Extract structured vault data from program logs
       const structuredVaultData = this.extractStructuredVaultData(programData);
-      console.log("Structured Vault Data:", structuredVaultData);
+      this.logger.log("Structured Vault Data:", structuredVaultData);
 
       // Log formatted vault data for better readability
       this.logFormattedVaultData(structuredVaultData);
@@ -1499,10 +1522,7 @@ export class TxEventManagementService {
       // Return vault factory creation results
       return vaultCreationResults;
     } catch (error) {
-      console.log(
-        `Error reading transaction: ${error.message}`,
-        error.stack
-      );
+      this.logger.log(`Error reading transaction: ${error.message}`, error.stack);
 
       // Handle specific Solana RPC errors
       if (error.message?.includes("Invalid transaction signature")) {
@@ -1690,10 +1710,10 @@ export class TxEventManagementService {
   }
 
   private logFormattedVaultData(vaultData: any): void {
-    console.log("\n🏦 ===== VAULT CREATION DATA =====");
-    console.log(`📝 Vault Name: ${vaultData.vaultName || "N/A"}`);
-    console.log(`🏷️ Vault Symbol: ${vaultData.vaultSymbol || "N/A"}`);
-    console.log(
+    this.logger.log("\n🏦 ===== VAULT CREATION DATA =====");
+    this.logger.log(`📝 Vault Name: ${vaultData.vaultName || "N/A"}`);
+    this.logger.log(`🏷️ Vault Symbol: ${vaultData.vaultSymbol || "N/A"}`);
+    this.logger.log(
       `🔢 Vault Index: ${
         vaultData.vaultIndex !== null ? vaultData.vaultIndex : "N/A"
       } (blockchain: ${
@@ -1702,20 +1722,20 @@ export class TxEventManagementService {
         vaultData.vaultIndex !== null ? vaultData.vaultIndex + 1 : "N/A"
       })`
     );
-    console.log(
+    this.logger.log(
       `💰 Management Fees: ${vaultData.managementFees?.bps || 0} bps (${
         vaultData.managementFees?.percentage || "0.00%"
       })`
     );
-    console.log(`📊 Number of Assets: ${vaultData.assetsCount || 0}`);
-    console.log(
+    this.logger.log(`📊 Number of Assets: ${vaultData.assetsCount || 0}`);
+    this.logger.log(
       `📈 Total BPS Allocation: ${vaultData.totalBpsAllocation || 0}`
     );
 
     if (vaultData.underlyingAssets && vaultData.underlyingAssets.length > 0) {
-      console.log("\n💎 Underlying Assets:");
+      this.logger.log("\n💎 Underlying Assets:");
       vaultData.underlyingAssets.forEach((asset: any, index: number) => {
-        console.log(
+        this.logger.log(
           `  Asset ${index + 1}: ${asset.mint} - ${asset.bps} bps (${
             asset.percentage
           })`
@@ -1723,24 +1743,24 @@ export class TxEventManagementService {
       });
     }
 
-    console.log("\n🔑 Vault Addresses:");
-    console.log(`  🏭 Factory: ${vaultData.factoryKey || "N/A"}`);
-    console.log(`  🔑 Vault PDA: ${vaultData.vaultPda || "N/A"}`);
-    console.log(`  👑 Vault Admin: ${vaultData.vaultAdmin || "N/A"}`);
-    console.log(`  🪙 Vault Mint PDA: ${vaultData.vaultMintPda || "N/A"}`);
-    console.log(
+    this.logger.log("\n🔑 Vault Addresses:");
+    this.logger.log(`  🏭 Factory: ${vaultData.factoryKey || "N/A"}`);
+    this.logger.log(`  🔑 Vault PDA: ${vaultData.vaultPda || "N/A"}`);
+    this.logger.log(`  👑 Vault Admin: ${vaultData.vaultAdmin || "N/A"}`);
+    this.logger.log(`  🪙 Vault Mint PDA: ${vaultData.vaultMintPda || "N/A"}`);
+    this.logger.log(
       `  💳 Vault Token Account PDA: ${vaultData.vaultTokenAccountPda || "N/A"}`
     );
 
     if (vaultData.createdAt) {
-      console.log(
+      this.logger.log(
         `\n📅 Created: ${vaultData.createdAt.date || "N/A"} (${
           vaultData.createdAt.timestamp || "N/A"
         })`
       );
     }
 
-    console.log("🏦 ================================\n");
+    this.logger.log("🏦 ================================\n");
   }
 
   private extractProgramData(
@@ -2029,7 +2049,7 @@ export class TxEventManagementService {
 
       return result;
     } catch (error) {
-      console.log(`Error decoding VaultCreated: ${error.message}`);
+      this.logger.log(`Error decoding VaultCreated: ${error.message}`);
       return this.decodeGeneric(buffer, "VaultCreated");
     }
   }
@@ -2068,9 +2088,7 @@ export class TxEventManagementService {
         updatedAt: date.toISOString(),
       };
     } catch (error) {
-      console.log(
-        `Error decoding FactoryAssetsUpdated: ${error.message}`
-      );
+      this.logger.log(`Error decoding FactoryAssetsUpdated: ${error.message}`);
       return this.decodeGeneric(buffer, "FactoryAssetsUpdated");
     }
   }
@@ -2099,7 +2117,7 @@ export class TxEventManagementService {
         initializedAt: date.toISOString(),
       };
     } catch (error) {
-      console.log(`Error decoding FactoryInitialized: ${error.message}`);
+      this.logger.log(`Error decoding FactoryInitialized: ${error.message}`);
       return this.decodeGeneric(buffer, "FactoryInitialized");
     }
   }
@@ -2140,7 +2158,7 @@ export class TxEventManagementService {
         updatedAt: date.toISOString(),
       };
     } catch (error) {
-      console.log(`Error decoding FactoryFeesUpdated: ${error.message}`);
+      this.logger.log(`Error decoding FactoryFeesUpdated: ${error.message}`);
       return this.decodeGeneric(buffer, "FactoryFeesUpdated");
     }
   }
@@ -2181,7 +2199,7 @@ export class TxEventManagementService {
         updatedAt: date.toISOString(),
       };
     } catch (error) {
-      console.log(`Error decoding VaultFeesUpdated: ${error.message}`);
+      this.logger.log(`Error decoding VaultFeesUpdated: ${error.message}`);
       return this.decodeGeneric(buffer, "VaultFeesUpdated");
     }
   }
@@ -2215,9 +2233,7 @@ export class TxEventManagementService {
         collectedAt: date.toISOString(),
       };
     } catch (error) {
-      console.log(
-        `Error decoding ProtocolFeesCollected: ${error.message}`
-      );
+      this.logger.log(`Error decoding ProtocolFeesCollected: ${error.message}`);
       return this.decodeGeneric(buffer, "ProtocolFeesCollected");
     }
   }
@@ -2276,7 +2292,7 @@ export class TxEventManagementService {
         !structuredVaultData.vaultName ||
         !structuredVaultData.vaultSymbol
       ) {
-        console.log("Skipping vault creation - missing required fields");
+        this.logger.log("Skipping vault creation - missing required fields");
         return vaultCreationResults;
       }
 
@@ -2285,7 +2301,7 @@ export class TxEventManagementService {
         !structuredVaultData.underlyingAssets ||
         !Array.isArray(structuredVaultData.underlyingAssets)
       ) {
-        console.log(
+        this.logger.log(
           "Skipping vault creation - missing or invalid underlying assets"
         );
         return vaultCreationResults;
@@ -2330,7 +2346,7 @@ export class TxEventManagementService {
           description: description,
         });
 
-      console.log(
+      this.logger.log(
         `Successfully created vault factory record: ${vaultRecord._id}`
       );
 
@@ -2340,7 +2356,7 @@ export class TxEventManagementService {
         vault: vaultRecord,
       });
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error processing vault creation: ${error.message}`,
         error.stack
       );
@@ -2366,7 +2382,7 @@ export class TxEventManagementService {
         commitment: "confirmed",
       });
     } catch (error) {
-      console.log(`Error fetching transaction details: ${error.message}`);
+      this.logger.log(`Error fetching transaction details: ${error.message}`);
       return null;
     }
   }
@@ -2380,7 +2396,7 @@ export class TxEventManagementService {
   async updateFees(updateFeesDto: UpdateFeesDto): Promise<any> {
     try {
       const { transactionSignature } = updateFeesDto;
-      console.log(
+      this.logger.log(
         `Processing transaction for FactoryFeesUpdated events: ${transactionSignature}`
       );
 
@@ -2416,7 +2432,7 @@ export class TxEventManagementService {
       // Process each FactoryFeesUpdated event found
       const processedEvents = [];
       for (const event of factoryFeesUpdatedEvents) {
-        console.log(`Found FactoryFeesUpdated event in transaction`);
+        this.logger.log(`Found FactoryFeesUpdated event in transaction`);
 
         try {
           // Update fees management using the new service method
@@ -2427,7 +2443,7 @@ export class TxEventManagementService {
               undefined // No specific vault ID for factory-level fee updates
             );
 
-          console.log(
+          this.logger.log(
             `Successfully updated fee configuration: ${
               (updatedFeeConfig as any)._id
             }`
@@ -2436,7 +2452,7 @@ export class TxEventManagementService {
           // Update the event with the updated fee config ID
           event.updatedFeeConfigId = (updatedFeeConfig as any)._id;
         } catch (error) {
-          console.log(
+          this.logger.log(
             `Failed to update fee configuration for event: ${error.message}`,
             error.stack
           );
@@ -2459,7 +2475,7 @@ export class TxEventManagementService {
         events: processedEvents,
       };
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error processing FactoryFeesUpdated transaction: ${error.message}`,
         error.stack
       );
@@ -2647,7 +2663,7 @@ export class TxEventManagementService {
     try {
       const { transactionSignature, signatureArray } =
         updateDepositTransactionDto;
-      console.log(
+      this.logger.log(
         `Processing transaction for deposit events: ${transactionSignature}`
       );
 
@@ -2674,7 +2690,7 @@ export class TxEventManagementService {
 
       // Check if this is a deposit transaction
       if (!depositData.user || !depositData.amount) {
-        console.log("No deposit data found in transaction logs");
+        this.logger.log("No deposit data found in transaction logs");
         return {
           events: [],
           message: "No deposit data found in transaction logs",
@@ -2693,7 +2709,7 @@ export class TxEventManagementService {
             vaultAddress = vault.vaultAddress;
           }
         } catch (error) {
-          console.log(
+          this.logger.log(
             `Could not find vault by name and symbol: ${error.message}`
           );
         }
@@ -2760,17 +2776,17 @@ export class TxEventManagementService {
               transactionSignature,
               signatureArray
             );
-            console.log(
+            this.logger.log(
               `History record created for deposit transaction: ${transactionSignature}`
             );
           }
         } catch (historyError) {
-          console.log(
+          this.logger.log(
             `Failed to create history record for deposit: ${historyError.message}`
           );
         }
       } catch (error) {
-        console.log(
+        this.logger.log(
           `Failed to update vault deposit: ${error.message}`,
           error.stack
         );
@@ -2816,7 +2832,7 @@ export class TxEventManagementService {
           );
         }
       } catch (lockUpdateError) {
-        console.log(
+        this.logger.log(
           `Failed to update totalAssetLocked: ${lockUpdateError.message}`
         );
       }
@@ -2826,7 +2842,7 @@ export class TxEventManagementService {
         events: processedEvents,
       };
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error processing deposit transaction: ${error.message}`,
         error.stack
       );
@@ -2909,7 +2925,7 @@ export class TxEventManagementService {
             redeemData.netStablecoinAmount = match[2];
             redeemData.totalFees = redeemData.exitFee;
           } else {
-            console.log(`Could not parse fees log: ${log}`);
+            this.logger.log(`Could not parse fees log: ${log}`);
           }
         }
       }
@@ -3049,12 +3065,12 @@ export class TxEventManagementService {
         .performedByWallet as string | undefined;
       const signatureArray = (updateRedeemTransactionDto as any)
         .signatureArray as string[] | undefined;
-      console.log(
+      this.logger.log(
         `Processing transaction for redeem events: ${transactionSignature}`
       );
-      console.log("performedByProfileId", performedByProfileId);
-      console.log("performedByWallet", performedByWallet);
-      console.log("signatureArray", signatureArray);
+      this.logger.log("performedByProfileId", performedByProfileId);
+      this.logger.log("performedByWallet", performedByWallet);
+      this.logger.log("signatureArray", signatureArray);
       // Fetch transaction details from Solana blockchain
       const transaction = await this.connection.getTransaction(
         transactionSignature,
@@ -3070,7 +3086,7 @@ export class TxEventManagementService {
 
       // Extract program logs
       const programLogs = this.extractProgramLogs(transaction);
-      console.log("programLogs Logs", programLogs);
+      this.logger.log("programLogs Logs", programLogs);
 
       // Parse redeem data from program logs
       const redeemData = this.parseRedeemProgramLogs(programLogs);
@@ -3082,11 +3098,11 @@ export class TxEventManagementService {
       if (!redeemData.user && performedByWallet) {
         redeemData.user = performedByWallet;
       }
-      console.log("Parsed redeem data:", redeemData);
+      this.logger.log("Parsed redeem data:", redeemData);
 
       // Check if this is a redeem transaction: must have amount; user can be from logs or auth
       if (!redeemData.vaultTokensToRedeem || !redeemData.user) {
-        console.log("No redeem data found in transaction logs");
+        this.logger.log("No redeem data found in transaction logs");
         return {
           events: [],
           message: "No redeem data found in transaction logs",
@@ -3109,7 +3125,7 @@ export class TxEventManagementService {
             vaultAddress = vault.vaultAddress;
           }
         } catch (error) {
-          console.log(
+          this.logger.log(
             `Could not find vault by name and symbol: ${error.message}`
           );
         }
@@ -3125,7 +3141,7 @@ export class TxEventManagementService {
           redeemData.netStablecoinAmount === "null" ||
           redeemData.netStablecoinAmount === "undefined"
         ) {
-          console.log(
+          this.logger.log(
             `Invalid netStablecoinAmount: ${redeemData.netStablecoinAmount}`
           );
           throw new Error(
@@ -3138,7 +3154,7 @@ export class TxEventManagementService {
           redeemData.vaultTokensToRedeem === "null" ||
           redeemData.vaultTokensToRedeem === "undefined"
         ) {
-          console.log(
+          this.logger.log(
             `Invalid vaultTokensToRedeem: ${redeemData.vaultTokensToRedeem}`
           );
           throw new Error(
@@ -3208,20 +3224,20 @@ export class TxEventManagementService {
               transactionSignature,
               signatureArray
             );
-            console.log(
+            this.logger.log(
               `History record created for redeem transaction: ${transactionSignature}`
             );
-            console.log(
+            this.logger.log(
               `History record created for redeem transaction: ${transactionSignature}`
             );
           }
         } catch (historyError) {
-          console.log(
+          this.logger.log(
             `Failed to create history record for redeem: ${historyError.message}`
           );
         }
       } catch (error) {
-        console.log(
+        this.logger.log(
           `Failed to update vault redeem: ${error.message}`,
           error.stack
         );
@@ -3258,7 +3274,7 @@ export class TxEventManagementService {
         events: processedEvents,
       };
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error processing redeem transaction: ${error.message}`,
         error.stack
       );
@@ -3348,7 +3364,7 @@ export class TxEventManagementService {
 
       return decodedEvent;
     } catch (error) {
-      console.log(
+      this.logger.log(
         `Error decoding enhanced FactoryFeesUpdated: ${error.message}`
       );
       return this.decodeGeneric(buffer, "FactoryFeesUpdated");
@@ -3411,7 +3427,7 @@ export class TxEventManagementService {
 
       return decodedEvent;
     } catch (error) {
-      console.log(`Error decoding VaultDeposited: ${error.message}`);
+      this.logger.log(`Error decoding VaultDeposited: ${error.message}`);
       return this.decodeGeneric(buffer, "VaultDeposited");
     }
   }
@@ -3435,7 +3451,7 @@ export class TxEventManagementService {
         // No cache entries found to clear
       }
     } catch (error) {
-      console.log("❌ Error clearing vault cache:", error);
+      this.logger.log("❌ Error clearing vault cache:", error);
     }
   }
 }

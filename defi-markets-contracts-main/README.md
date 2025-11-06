@@ -71,7 +71,7 @@ wallet  = "~/.config/solana/id.json"
 ```
 
 Program IDs:
-- Vault MVP Program: `5tAdLifeaGj3oUVVpr7gG5ntjW6c2Lg3sY2ftBCi8MkZ`
+- Vault MVP Program: `BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB`
 - Jupiter (client swaps): `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4`
 ## 1) High-Level Architecture
 

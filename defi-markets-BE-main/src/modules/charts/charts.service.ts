@@ -19,6 +19,7 @@ import {
   getAccount,
   getAssociatedTokenAddress,
   TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getMint,
 } from "@solana/spl-token";
@@ -250,18 +251,64 @@ export class ChartsService {
     return { data: results };
   }
 
+  /**
+   * Determine the correct token program for a given mint
+   */
+  private async getTokenProgramId(mint: PublicKey): Promise<PublicKey> {
+    try {
+      const mintInfo = await this.connection.getAccountInfo(mint);
+      if (!mintInfo) {
+        this.logger.log(
+          `Mint ${mint.toBase58()} not found, defaulting to TOKEN_PROGRAM_ID`
+        );
+        return TOKEN_PROGRAM_ID;
+      }
+
+      // Check if it's Token-2022 program
+      if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+        this.logger.log(`Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`);
+        return TOKEN_2022_PROGRAM_ID;
+      }
+
+      // Default to SPL Token program
+      this.logger.log(`Using TOKEN_PROGRAM_ID for mint ${mint.toBase58()}`);
+      return TOKEN_PROGRAM_ID;
+    } catch (error) {
+      this.logger.log(
+        `Error determining token program for ${mint.toBase58()}: ${
+          (error as Error).message
+        }, defaulting to TOKEN_PROGRAM_ID`
+      );
+      return TOKEN_PROGRAM_ID;
+    }
+  }
+
   private async getTokenDecimals(mintAddress: PublicKey): Promise<number> {
     const key = mintAddress.toBase58();
     if (this.tokenDecimalsCache.has(key)) {
-      return this.tokenDecimalsCache.get(key)!;
+      const cached = this.tokenDecimalsCache.get(key)!;
+      this.logger.debug(`Using cached decimals for ${key}: ${cached}`);
+      return cached;
     }
 
     try {
-      const mintInfo = await getMint(this.connection, mintAddress);
-      this.tokenDecimalsCache.set(key, mintInfo.decimals);
-      return mintInfo.decimals;
+      // First, determine the correct token program for this mint
+      const tokenProgramId = await this.getTokenProgramId(mintAddress);
+      
+      // Fetch mint info with the correct token program
+      const mintInfo = await getMint(this.connection, mintAddress, undefined, tokenProgramId);
+      const decimals = mintInfo.decimals;
+      
+      // Cache and return the actual decimals from blockchain
+      this.tokenDecimalsCache.set(key, decimals);
+      this.logger.log(`Fetched decimals from blockchain for ${key}: ${decimals} (token program: ${tokenProgramId.toBase58()})`);
+      return decimals;
     } catch (error) {
-      this.logger.warn(`Could not fetch decimals for ${key}, defaulting to 6`);
+      this.logger.warn(
+        `Could not fetch decimals for ${key} from blockchain: ${error instanceof Error ? error.message : String(error)}, defaulting to 6`
+      );
+      // Only cache the default if we're sure it's a permanent failure
+      // Don't cache temporary failures to allow retry
       this.tokenDecimalsCache.set(key, 6);
       return 6;
     }
@@ -374,7 +421,7 @@ export class ChartsService {
 
       // Log underlying asset balances
       this.logger.log(`\n🏦 Underlying Assets:`);
-      const pricedAssets: { mint: PublicKey; amountTokens: number }[] = [];
+      const pricedAssets: { mint: PublicKey; amountTokens: number; decimals: number }[] = [];
       for (let i = 0; i < vaultAccount.underlyingAssets.length; i++) {
         const asset = vaultAccount.underlyingAssets[i];
         if (asset.mintAddress.toBase58() !== "11111111111111111111111111111111") {
@@ -385,25 +432,48 @@ export class ChartsService {
           );
 
           // Get token account balance
+          let amountTokens = 0;
+          let decimals = 6; // Default fallback
           try {
+            // First, determine the correct token program for this mint
+            const tokenProgramId = await this.getTokenProgramId(asset.mintAddress);
+            this.logger.log(`    Token Program: ${tokenProgramId.toBase58()}`);
+            
             const tokenAccount = await getAssociatedTokenAddress(
               asset.mintAddress,
               vault,
               true,
-              TOKEN_PROGRAM_ID,
+              tokenProgramId,
               ASSOCIATED_TOKEN_PROGRAM_ID
             );
-            const balance = await getAccount(this.connection, tokenAccount);
-            const decimals = await this.getTokenDecimals(asset.mintAddress);
+            this.logger.log(`    Token Account (ATA): ${tokenAccount.toBase58()}`);
+            
+            const balance = await getAccount(this.connection, tokenAccount, undefined, tokenProgramId);
+            // Get actual token decimals from blockchain (matching Solscan)
+            decimals = await this.getTokenDecimals(asset.mintAddress);
+            amountTokens = Number(balance.amount) / Math.pow(10, decimals);
             this.logger.log(
-              `    Balance: ${balance.amount.toString()} (${(Number(balance.amount) / Math.pow(10, decimals)).toFixed(6)} tokens)`
+              `    Balance: ${balance.amount.toString()} (${amountTokens.toFixed(decimals)} tokens, ${decimals} decimals)`
             );
-
-            const amountTokens = Number(balance.amount) / Math.pow(10, decimals);
-            pricedAssets.push({ mint: asset.mintAddress, amountTokens });
-          } catch (e) {
-            this.logger.log(`    Balance: Account not found or error`);
+            this.logger.log("balance", balance);
+          } catch (e: any) {
+            if (e.name === "TokenAccountNotFoundError") {
+              this.logger.log(`    Balance: 0 (Token account not found)`);
+              this.logger.log(`    Error: ${e.message}`);
+            } else {
+              this.logger.log(`    Balance: Account error - ${e.message}`);
+            }
+            amountTokens = 0;
+            // Try to get decimals even if balance fetch failed
+            try {
+              decimals = await this.getTokenDecimals(asset.mintAddress);
+            } catch {
+              // Keep default 6 if decimals fetch also fails
+            }
           }
+          
+          // Always add the asset to pricedAssets with its decimals, even if balance is 0
+          pricedAssets.push({ mint: asset.mintAddress, amountTokens, decimals });
         }
       }
       let totalUsd = 0;
@@ -415,13 +485,13 @@ export class ChartsService {
 
         
         this.logger.log(`\n💵 USD Valuations (Jupiter Prices - excluding stablecoin):`);
-        for (const { mint, amountTokens } of pricedAssets) {
+        for (const { mint, amountTokens, decimals } of pricedAssets) {
           const mintStr = mint.toBase58();
           const price = Number(priceMap[mintStr] || 0);
           const usdValue = amountTokens * price;
           totalUsd += usdValue;
           this.logger.log(
-            `  ${mintStr}: ${amountTokens.toFixed(6)} tokens × $${price.toFixed(6)} = $${usdValue.toFixed(6)}`
+            `  ${mintStr}: ${amountTokens.toFixed(decimals)} tokens (${decimals} decimals) × $${price.toFixed(6)} = $${usdValue.toFixed(6)}`
           );
         }
         this.logger.log(`\n🧮 Total Portfolio Value (excluding stablecoin): $${totalUsd.toFixed(6)}`);
@@ -1410,28 +1480,36 @@ export class ChartsService {
       const factory = this.pdaFactory();
       const vault = this.pdaVault(factory, vaultIndex);
 
-      // Get token decimals
-      const decimals = await this.getTokenDecimals(new PublicKey(mintAddress));
+      const mintPublicKey = new PublicKey(mintAddress);
+
+      // Get actual token decimals from blockchain (matching Solscan)
+      const decimals = await this.getTokenDecimals(mintPublicKey);
+
+      // Determine the correct token program for this mint
+      const tokenProgramId = await this.getTokenProgramId(mintPublicKey);
+      this.logger.log(
+        `Getting token balance for vault ${vaultIndex}, mint ${mintAddress}, using token program ${tokenProgramId.toBase58()}, decimals: ${decimals}`
+      );
 
       // Get associated token account for the vault
       const tokenAccount = await getAssociatedTokenAddress(
-        new PublicKey(mintAddress),
+        mintPublicKey,
         vault,
         true,
-        TOKEN_PROGRAM_ID,
+        tokenProgramId,
         ASSOCIATED_TOKEN_PROGRAM_ID
       );
 
       try {
         // Get token account balance
-        const accountInfo = await getAccount(this.connection, tokenAccount);
+        const accountInfo = await getAccount(this.connection, tokenAccount, undefined, tokenProgramId);
         const balance = Number(accountInfo.amount);
         const balanceFormatted = balance / Math.pow(10, decimals);
 
         this.logger.log(
           `Token balance for ${mintAddress}: ${balance} raw units (${balanceFormatted.toFixed(
-            6
-          )} tokens)`
+            decimals
+          )} tokens, ${decimals} decimals)`
         );
 
         return {

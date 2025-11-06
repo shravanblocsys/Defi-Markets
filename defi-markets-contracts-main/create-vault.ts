@@ -4,8 +4,6 @@ import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { VaultMvp } from "./target/types/vault_mvp";
 import idl from "./target/idl/vault_mvp.json";
 
-// Hardcoded private key (replace with your actual private key array)
-const PRIVATE_KEY = [218, 160, 156, 207, 217, 144, 46, 141, 140, 106, 192, 30, 136, 203, 151, 236, 131, 86, 7, 12, 222, 40, 56, 4, 29, 98, 129, 224, 192, 213, 235, 79, 2, 121, 37, 132, 3, 119, 111, 162, 29, 181, 242, 207, 186, 240, 82, 113, 40, 81, 158, 52, 38, 245, 133, 72, 218, 91, 179, 240, 231, 33, 143, 187];
 
 // Example token mint addresses (replace with actual token mints)
 const SOL_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL

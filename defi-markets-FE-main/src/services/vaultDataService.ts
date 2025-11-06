@@ -119,10 +119,10 @@ class VaultDataService {
       return mintInfo.decimals;
     } catch (error) {
       // console.warn(
-      //   `Failed to get decimals for ${mintAddress.toBase58()}, defaulting to 9`
+      //   `Failed to get decimals for ${mintAddress.toBase58()}, defaulting to 6`
       // );
-      this.decimalsCache.set(mintKey, 9);
-      return 9; // Default to 9 decimals for most Solana tokens
+      this.decimalsCache.set(mintKey, 6);
+      return 6; // Default to 6 decimals to match contract standard
     }
   }
 
@@ -229,12 +229,20 @@ class VaultDataService {
             });
           } catch (e) {
             // console.log(`    Balance: Account not found or error`);
+            // Even if balance fetch fails, try to get actual decimals from blockchain
+            let tokenDecimals = 6; // Default fallback
+            try {
+              tokenDecimals = await this.getTokenDecimals(asset.mintAddress);
+            } catch (decimalsError) {
+              // If decimals fetch also fails, use default 6
+              // console.log(`    Could not fetch decimals, using default 6`);
+            }
             underlyingAssets.push({
               mintAddress: asset.mintAddress.toBase58(),
               allocation: asset.mintBps,
               balance: 0,
               balanceFormatted: 0,
-              decimals: 9, // Default to 9 decimals
+              decimals: tokenDecimals, // Use actual decimals from blockchain
             });
           }
         }

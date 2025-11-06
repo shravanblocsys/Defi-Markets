@@ -8,6 +8,7 @@ import {
   VersionedTransaction,
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
+  SendTransactionError,
 } from "@solana/web3.js";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
@@ -65,8 +66,25 @@ export const useContract = () => {
 
         return signature;
       } catch (err) {
-        setError(err.message);
-        throw err;
+        // Provide detailed logs when simulation fails
+        try {
+          if (err instanceof SendTransactionError) {
+            // web3.js exposes getLogs() to retrieve simulation logs
+            const logs = await err.getLogs(connection as Connection);
+            const message = `SendTransactionError: ${err.message}${
+              logs && logs.length ? `\nLogs:\n${logs.join("\n")}` : ""
+            }`;
+            // Surface logs in console for debugging
+            // eslint-disable-next-line no-console
+            console.error(message);
+            setError(message as any);
+            throw new Error(message);
+          }
+        } catch (_) {
+          // Fallback: if getLogs not available or fails, proceed with original error
+        }
+        setError((err as any)?.message ?? "Transaction failed");
+        throw err as any;
       } finally {
         setLoading(false);
       }
@@ -231,10 +249,12 @@ export function useVaultCreation() {
         //   vaultTokenAccountPda.toBase58()
         // );
 
-        // Prepare stablecoin accounts for creation fee (10 USDC) - exactly like script_min.ts
+        // Prepare stablecoin accounts for vault creation fee
+        // Factory stores vaultCreationFeeUsdc (e.g., 10000000 = 10 USDC with 6 decimals)
         const stablecoinMintForFee = STABLECOIN_MINT;
 
-        // Get associated token addresses exactly like script_min.ts
+        // Get associated token addresses
+        // User's stablecoin account (from which the fee will be deducted)
         const adminStablecoinAccountAddress = await getAssociatedTokenAddress(
           stablecoinMintForFee,
           new PublicKey(address), // owner (user's wallet)
@@ -242,10 +262,12 @@ export function useVaultCreation() {
           TOKEN_PROGRAM_ID
         );
 
+        // Factory admin's stablecoin account (fee recipient)
+        // Note: factory.admin and factory.feeRecipient are typically the same address
         const factoryAdminStablecoinAccountAddress =
           await getAssociatedTokenAddress(
             stablecoinMintForFee,
-            factory.admin, // owner (factory admin)
+            factory.admin, // owner (factory admin / fee recipient)
             false,
             TOKEN_PROGRAM_ID
           );

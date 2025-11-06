@@ -41,7 +41,12 @@ import { SuccessPopup } from "@/components/ui/SuccessPopup";
 import LoadingPopup from "@/components/ui/LoadingPopup";
 import FinancialsTab from "@/components/vault/FinancialsTab";
 import DepositorsTab from "@/components/vault/DepositorsTab";
-import { vaultsApi, transactionEventApi, portfolioApi, chartApi } from "@/services/api";
+import {
+  vaultsApi,
+  transactionEventApi,
+  portfolioApi,
+  chartApi,
+} from "@/services/api";
 // Tabs removed; rendering all sections inline on the page
 
 import {
@@ -230,7 +235,7 @@ const VaultDetails = () => {
     vaultManagementFees: number;
   } | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
-  
+
   // TVL/NAV from API (both use totalUsd)
   const [vaultTVL, setVaultTVL] = useState<{
     totalUsd: number;
@@ -265,7 +270,7 @@ const VaultDetails = () => {
     try {
       setVaultTVL((prev) => ({ ...prev, loading: true }));
       const response = await chartApi.getVaultTotalUSD([vaultId]);
-      
+
       if (response && response.data && response.data.data.length > 0) {
         const tvlData = response.data.data[0];
         setVaultTVL({
@@ -294,7 +299,7 @@ const VaultDetails = () => {
       // Refresh user-specific data
       await fetchUserDeposits(id);
 
-      // Refresh vault-specific data
+      // Refresh vault-specific data (including fees from API)
       await Promise.all([
         fetchVaultInsights(id),
         fetchVaultPortfolio(id),
@@ -304,6 +309,7 @@ const VaultDetails = () => {
           activityPagination.currentPage,
           activityPagination.itemsPerPage
         ),
+        fetchVaultFees(id), // Refresh fees from API as well
       ]);
 
       // Refresh vault valuation (GAV/NAV)
@@ -318,7 +324,6 @@ const VaultDetails = () => {
 
       // Trigger share price chart refresh
       setRefreshTrigger((prev) => prev + 1);
-
     } catch (error) {
       console.error("❌ Error refreshing data:", error);
     }
@@ -493,6 +498,25 @@ const VaultDetails = () => {
     const fracPadded = (fracPartRaw + "0".repeat(decimals)).slice(0, decimals);
     const combined = `${intPart}${fracPadded}`.replace(/^0+(?=\d)/, "");
     return new anchor.BN(combined === "" ? "0" : combined);
+  };
+
+  // Compute ETF share price from current state with sensible fallbacks
+  const computeEtfSharePriceRaw = () => {
+    // Prefer live NAV and total supply if available
+    const navUsd = Number(vaultTVL?.totalUsd) || 0;
+    const totalSupply = Number(vault?.totalTokens) || 0;
+    let sharePrice = 0;
+    if (navUsd > 0 && totalSupply > 0) {
+      sharePrice = navUsd / totalSupply;
+    } else if (
+      vaultMetrics &&
+      typeof vaultMetrics.dtfSharePrice === "number" &&
+      vaultMetrics.dtfSharePrice > 0
+    ) {
+      sharePrice = vaultMetrics.dtfSharePrice;
+    }
+    
+    return toRawUnits(String(sharePrice), 6);
   };
 
   // Helper function to get user deposit details
@@ -802,14 +826,18 @@ const VaultDetails = () => {
         );
       }
 
-      // Resolve factory admin fee recipient USDC account (as per reference script)
+      // Resolve factory accounts (admin and fee recipient) and their USDC ATAs
       const factoryAccount = await (
         vaultFactoryProgram as any
       ).account.factory.fetch(factoryPDA);
       const factoryAdminPubkey: PublicKey = factoryAccount.admin as PublicKey;
+      const factoryFeeRecipientPubkey: PublicKey =
+        (factoryAccount.feeRecipient as PublicKey) ?? factoryAdminPubkey;
+
+      // Fee recipient USDC ATA must be owned by factory.feeRecipient
       const feeRecipientUSDCAccount = await getAssociatedTokenAddress(
         STABLECOIN_MINT,
-        factoryAdminPubkey,
+        factoryFeeRecipientPubkey,
         false,
         TOKEN_PROGRAM_ID,
         ASSOCIATED_TOKEN_PROGRAM_ID
@@ -822,7 +850,30 @@ const VaultDetails = () => {
           createAssociatedTokenAccountInstruction(
             userPublicKey, // payer
             feeRecipientUSDCAccount,
-            factoryAdminPubkey, // owner
+            factoryFeeRecipientPubkey, // owner must be fee recipient
+            STABLECOIN_MINT,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          )
+        );
+      }
+
+      // Admin USDC ATA (for vault admin stablecoin account parameter)
+      const adminUSDCAccount = await getAssociatedTokenAddress(
+        STABLECOIN_MINT,
+        factoryAdminPubkey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+      try {
+        await getAccount(connection, adminUSDCAccount);
+      } catch {
+        ixs.push(
+          createAssociatedTokenAccountInstruction(
+            userPublicKey, // payer
+            adminUSDCAccount,
+            factoryAdminPubkey, // owner must be admin
             STABLECOIN_MINT,
             TOKEN_PROGRAM_ID,
             ASSOCIATED_TOKEN_PROGRAM_ID
@@ -835,8 +886,10 @@ const VaultDetails = () => {
       setDepositStepIndex(1);
       await delay(500); // Small delay to show the step
       const rawAmount = toRawUnits(depositAmount, 6);
+      // Compute current ETF share price (USD) -> raw units (6 decimals)
+      const etfSharePriceRaw = computeEtfSharePriceRaw();
       const depositIx = await vaultFactoryProgram.methods
-        .deposit(vault.vaultIndex, rawAmount)
+        .deposit(vault.vaultIndex, rawAmount, etfSharePriceRaw)
         .accountsStrict({
           user: userPublicKey,
           factory: factoryPDA,
@@ -846,9 +899,9 @@ const VaultDetails = () => {
           stablecoinMint: STABLECOIN_MINT,
           vaultStablecoinAccount: vaultStablecoinAccountPDA,
           userVaultAccount: userVaultTokenATA,
-          // Use factory admin USDC ATA for both fee recipient and vault admin, matching script
+          // Pass distinct ATAs as required by program constraints
           feeRecipientStablecoinAccount: feeRecipientUSDCAccount,
-          vaultAdminStablecoinAccount: feeRecipientUSDCAccount,
+          vaultAdminStablecoinAccount: adminUSDCAccount,
           jupiterProgram: JUPITER_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
@@ -890,6 +943,7 @@ const VaultDetails = () => {
         const swapResponse = await transactionEventApi.adminSwapByVault({
           vaultIndex: vault.vaultIndex,
           amountInRaw: netAmountRaw.toString(),
+          etfSharePriceRaw: etfSharePriceRaw.toString(),
         });
 
         // console.log("✅ Swap completed successfully:", swapResponse);
@@ -930,19 +984,23 @@ const VaultDetails = () => {
           setDepositStepIndex(5);
           await delay(1000); // Longer delay to show the final step
 
-          // Refresh on-chain details (fees and user deposits)
+          // Refresh on-chain details (fees and user deposits) and API data in parallel
           const [fPDA] = PublicKey.findProgramAddressSync(
             [Buffer.from("factory_v2")],
             VAULT_FACTORY_PROGRAM_ID
           );
-          await getVaultFees(fPDA, vault.vaultIndex);
-          await getUserDepositDetails(fPDA, vault.vaultIndex);
+          
+          // Refresh blockchain data and API data in parallel for faster updates
+          await Promise.all([
+            getVaultFees(fPDA, vault.vaultIndex),
+            getUserDepositDetails(fPDA, vault.vaultIndex),
+            refreshAllData(), // This includes API fees refresh
+          ]);
 
-          // Refresh all other data (holdings, portfolio, activity, etc.)
-          await refreshAllData();
-
-          // Show success popup only after all steps are completed and visible
-          await delay(500); // Additional delay to ensure final step is seen
+          // Additional delay to ensure all state updates are reflected in UI
+          await delay(500);
+          
+          // Show success popup only after all states are updated
           setShowDepositSuccessPopup(true);
         } catch (refreshError) {
           console.error(
@@ -961,7 +1019,17 @@ const VaultDetails = () => {
 
         // Still refresh data even if swap failed
         try {
-          await refreshAllData();
+          const [fPDA] = PublicKey.findProgramAddressSync(
+            [Buffer.from("factory_v2")],
+            VAULT_FACTORY_PROGRAM_ID
+          );
+          
+          // Refresh both blockchain and API data
+          await Promise.all([
+            getVaultFees(fPDA, vault.vaultIndex),
+            getUserDepositDetails(fPDA, vault.vaultIndex),
+            refreshAllData(),
+          ]);
         } catch (refreshError) {
           console.error(
             "❌ Error refreshing data after deposit (swap failed):",
@@ -969,7 +1037,8 @@ const VaultDetails = () => {
           );
         }
 
-        await delay(500); // Additional delay
+        // Additional delay to ensure all state updates are reflected
+        await delay(500);
         setShowDepositSuccessPopup(true);
       }
 
@@ -1449,6 +1518,8 @@ const VaultDetails = () => {
       setRedeemStepIndex(1);
       await delay(500); // Small delay to show the step
       const rawVaultTokenAmount = toRawUnits(redeemAmount, 6);
+      // Capture ETF share price once at redeem start and reuse it throughout
+      const redeemEtfSharePriceRaw = computeEtfSharePriceRaw();
 
       // Swaps are executed by backend admin; do not withdraw underlying here
 
@@ -1554,10 +1625,13 @@ const VaultDetails = () => {
       let finalizeAmountRaw = new anchor.BN(rawVaultTokenAmount.toString());
       let vaultUsdcBalanceBn: anchor.BN | null = null;
       let redeemSwapSigs: string[] = []; // Store swap signatures locally
+      console.log("🔄 Raw vault token amount for redeem:", rawVaultTokenAmount.toString());
+      console.log("🔄 ETF share price raw redeem:", redeemEtfSharePriceRaw.toString());
       try {
         const adminResp = await transactionEventApi.redeemSwapAdmin({
           vaultIndex: vault.vaultIndex,
           vaultTokenAmount: rawVaultTokenAmount.toString(),
+          etfSharePriceRaw: redeemEtfSharePriceRaw.toString(),
         });
         await delay(2000);
         // console.log("🔄 Backend admin redeem swaps done:", adminResp);
@@ -1602,11 +1676,14 @@ const VaultDetails = () => {
 
       setRedeemStep("Executing transaction...");
       setRedeemStepIndex(3);
-      await delay(500); // Small delay to show the step
+      await delay(10000); // Small delay to show the step it takes to execute the transaction
+      console.log("🔄 rawVaultTokenAmount amount raw redeem :", rawVaultTokenAmount.toString());
+      console.log("🔄 Redeem ETF share price raw:", redeemEtfSharePriceRaw.toString());
       const finalizeIx = await (vaultFactoryProgram as any).methods
         .finalizeRedeem(
           new anchor.BN(vault.vaultIndex),
-          new anchor.BN(finalizeAmountRaw.toString())
+          new anchor.BN(rawVaultTokenAmount.toString()),
+          new anchor.BN(redeemEtfSharePriceRaw.toString())
         )
         .accountsStrict({
           user: userPublicKey,
@@ -1649,7 +1726,8 @@ const VaultDetails = () => {
           const finalizeIxRetry = await (vaultFactoryProgram as any).methods
             .finalizeRedeem(
               new anchor.BN(vault.vaultIndex),
-              new anchor.BN(retryAmount.toString())
+              new anchor.BN(retryAmount.toString()),
+              new anchor.BN(redeemEtfSharePriceRaw.toString())
             )
             .accountsStrict({
               user: userPublicKey,
@@ -1706,19 +1784,23 @@ const VaultDetails = () => {
         setRedeemStepIndex(5);
         await delay(1000); // Longer delay to show the final step
 
-        // Refresh on-chain details (fees and user deposits)
+        // Refresh on-chain details (fees and user deposits) and API data in parallel
         const [fPDA] = PublicKey.findProgramAddressSync(
           [Buffer.from("factory_v2")],
           VAULT_FACTORY_PROGRAM_ID
         );
-        await getVaultFees(fPDA, vault.vaultIndex);
-        await getUserDepositDetails(fPDA, vault.vaultIndex);
+        
+        // Refresh blockchain data and API data in parallel for faster updates
+        await Promise.all([
+          getVaultFees(fPDA, vault.vaultIndex),
+          getUserDepositDetails(fPDA, vault.vaultIndex),
+          refreshAllData(), // This includes API fees refresh
+        ]);
 
-        // Refresh all other data (holdings, portfolio, activity, etc.)
-        await refreshAllData();
-
-        // Show success popup only after all steps are completed and visible
-        await delay(500); // Additional delay to ensure final step is seen
+        // Additional delay to ensure all state updates are reflected in UI
+        await delay(500);
+        
+        // Show success popup only after all states are updated
         setShowRedeemSuccessPopup(true);
       } catch (refreshErr) {
         console.error("❌ Error refreshing data after redeem:", refreshErr);

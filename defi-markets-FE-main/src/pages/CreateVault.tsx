@@ -799,8 +799,34 @@ const CreateVault = () => {
       });
     } catch (error) {
       console.error("Failed to create vault:", error);
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to create vault";
+      
+      // Detect insufficient SOL balance errors
+      let errorMessage = "Failed to create vault";
+      if (error instanceof Error) {
+        const errorStr = error.message.toLowerCase();
+        const errorStringified = JSON.stringify(error).toLowerCase();
+        
+        // Check for various insufficient funds error patterns
+        if (
+          errorStr.includes("insufficient funds") ||
+          errorStr.includes("insufficient sol") ||
+          errorStr.includes("account has insufficient funds") ||
+          errorStr.includes("not enough sol") ||
+          errorStr.includes("insufficient balance") ||
+          errorStr.includes("exceeded cus meter") ||
+          errorStr.includes("transaction simulation failed") ||
+          errorStringified.includes("insufficient funds") ||
+          errorStringified.includes("insufficient sol") ||
+          errorStringified.includes("0x1") // Solana error code for insufficient funds
+        ) {
+          errorMessage = "Insufficient SOL balance. Please ensure you have enough SOL to cover transaction fees (typically 0.064 - 0.1 SOL) in addition to the 10 USDC vault creation fee.";
+        } else if (errorStr.includes("user rejected") || errorStr.includes("user cancelled")) {
+          errorMessage = "Transaction was cancelled. Please try again when ready.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
       setDeployError(errorMessage);
 
       toast({

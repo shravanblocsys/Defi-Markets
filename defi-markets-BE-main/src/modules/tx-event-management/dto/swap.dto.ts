@@ -11,6 +11,14 @@ export class SwapDto {
   @IsString()
   @IsNotEmpty()
   amountInRaw: string;
+
+  @ApiProperty({
+    description: "ETF share price raw (6 decimals, u64 as string)",
+    example: "484920",
+  })
+  @IsString()
+  @IsNotEmpty()
+  etfSharePriceRaw: string;
 }
 
 

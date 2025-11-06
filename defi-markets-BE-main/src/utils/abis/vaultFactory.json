@@ -1,5 +1,5 @@
 {
-  "address": "5tAdLifeaGj3oUVVpr7gG5ntjW6c2Lg3sY2ftBCi8MkZ",
+  "address": "BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB",
   "metadata": {
     "name": "vault_mvp",
     "version": "0.1.0",
@@ -12,46 +12,22 @@
       "docs": [
         "Collect accrued management fees from vault USDC and distribute 70/30"
       ],
-      "discriminator": [
-        20,
-        115,
-        148,
-        149,
-        165,
-        31,
-        203,
-        67
-      ],
+      "discriminator": [20, 115, 148, 149, 165, 31, 203, 67],
       "accounts": [
         {
           "name": "collector",
-          "docs": [
-            "Any signer triggering collection (keeper/admin)"
-          ],
+          "docs": ["Any signer triggering collection (keeper/admin)"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -66,13 +42,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -87,39 +57,15 @@
         },
         {
           "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's USDC account to pay fees from"
-          ],
+          "docs": ["Vault's USDC account to pay fees from"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -131,16 +77,12 @@
         },
         {
           "name": "vault_admin_stablecoin_account",
-          "docs": [
-            "Vault admin USDC account (70%)"
-          ],
+          "docs": ["Vault admin USDC account (70%)"],
           "writable": true
         },
         {
           "name": "fee_recipient_stablecoin_account",
-          "docs": [
-            "Protocol fee recipient USDC account (30%)"
-          ],
+          "docs": ["Protocol fee recipient USDC account (30%)"],
           "writable": true
         },
         {
@@ -161,50 +103,24 @@
     },
     {
       "name": "create_vault",
-      "docs": [
-        "Create a new vault with underlying assets and management fees"
-      ],
-      "discriminator": [
-        29,
-        237,
-        247,
-        208,
-        193,
-        82,
-        54,
-        135
-      ],
+      "docs": ["Create a new vault with underlying assets and management fees"],
+      "discriminator": [29, 237, 247, 208, 193, 82, 54, 135],
       "accounts": [
         {
           "name": "admin",
-          "docs": [
-            "Admin who creates the vault"
-          ],
+          "docs": ["Admin who creates the vault"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -219,13 +135,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -241,26 +151,13 @@
         },
         {
           "name": "vault_mint",
-          "docs": [
-            "Vault token mint (SPL token)"
-          ],
+          "docs": ["Vault token mint (SPL token)"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116, 95, 109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -271,34 +168,15 @@
         },
         {
           "name": "vault_token_account",
-          "docs": [
-            "Vault token account for holding vault tokens"
-          ],
+          "docs": ["Vault token account for holding vault tokens"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  116,
-                  111,
-                  107,
-                  101,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 116, 111, 107, 101, 110, 95, 97,
+                  99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -310,15 +188,11 @@
         },
         {
           "name": "stablecoin_mint",
-          "docs": [
-            "Stablecoin mint used to pay creation fee (e.g. USDC)"
-          ]
+          "docs": ["Stablecoin mint used to pay creation fee (e.g. USDC)"]
         },
         {
           "name": "admin_stablecoin_account",
-          "docs": [
-            "Admin's stablecoin token account (payer of creation fee)"
-          ],
+          "docs": ["Admin's stablecoin token account (payer of creation fee)"],
           "writable": true
         },
         {
@@ -371,46 +245,22 @@
       "docs": [
         "Deposit any stablecoin into the vault and receive vault tokens"
       ],
-      "discriminator": [
-        242,
-        35,
-        198,
-        137,
-        82,
-        225,
-        242,
-        182
-      ],
+      "discriminator": [242, 35, 198, 137, 82, 225, 242, 182],
       "accounts": [
         {
           "name": "user",
-          "docs": [
-            "User making the deposit"
-          ],
+          "docs": ["User making the deposit"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -425,13 +275,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -446,26 +290,13 @@
         },
         {
           "name": "vault_mint",
-          "docs": [
-            "Vault token mint"
-          ],
+          "docs": ["Vault token mint"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116, 95, 109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -483,45 +314,19 @@
         },
         {
           "name": "stablecoin_mint",
-          "docs": [
-            "Stablecoin mint (USDC, USDT, etc.)"
-          ]
+          "docs": ["Stablecoin mint (USDC, USDT, etc.)"]
         },
         {
           "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's stablecoin token account (to receive deposits)"
-          ],
+          "docs": ["Vault's stablecoin token account (to receive deposits)"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -533,16 +338,12 @@
         },
         {
           "name": "user_vault_account",
-          "docs": [
-            "User's vault token account (to receive vault tokens)"
-          ],
+          "docs": ["User's vault token account (to receive vault tokens)"],
           "writable": true
         },
         {
           "name": "fee_recipient_stablecoin_account",
-          "docs": [
-            "Fee recipient's stablecoin token account"
-          ],
+          "docs": ["Fee recipient's stablecoin token account"],
           "writable": true
         },
         {
@@ -576,6 +377,10 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "etf_share_price",
+          "type": "u64"
         }
       ]
     },
@@ -585,46 +390,22 @@
         "Distribute accrued management fees as vault tokens to vault creator and platform",
         "This aligns fee recipients with vault performance by giving them vault shares"
       ],
-      "discriminator": [
-        205,
-        241,
-        193,
-        87,
-        26,
-        33,
-        131,
-        94
-      ],
+      "discriminator": [205, 241, 193, 87, 26, 33, 131, 94],
       "accounts": [
         {
           "name": "collector",
-          "docs": [
-            "Any signer triggering distribution (keeper/admin)"
-          ],
+          "docs": ["Any signer triggering distribution (keeper/admin)"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -639,13 +420,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -660,26 +435,13 @@
         },
         {
           "name": "vault_mint",
-          "docs": [
-            "Vault token mint (for minting fee shares)"
-          ],
+          "docs": ["Vault token mint (for minting fee shares)"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116, 95, 109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -720,49 +482,23 @@
     },
     {
       "name": "execute_swaps",
-      "docs": [
-        "Execute Jupiter swaps for vault's USDC into underlying assets"
-      ],
-      "discriminator": [
-        131,
-        242,
-        180,
-        205,
-        235,
-        179,
-        105,
-        117
-      ],
+      "docs": ["Execute Jupiter swaps for vault's USDC into underlying assets"],
+      "discriminator": [131, 242, 180, 205, 235, 179, 105, 117],
       "accounts": [
         {
           "name": "executor",
-          "docs": [
-            "Vault admin or authorized user executing swaps"
-          ],
+          "docs": ["Vault admin or authorized user executing swaps"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -777,13 +513,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -807,30 +537,8 @@
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -842,9 +550,7 @@
         },
         {
           "name": "jupiter_program",
-          "docs": [
-            "Jupiter program account"
-          ]
+          "docs": ["Jupiter program account"]
         },
         {
           "name": "token_program",
@@ -864,49 +570,23 @@
     },
     {
       "name": "finalize_redeem",
-      "docs": [
-        "Finalize redeem: burn tokens and settle fees/net USDC"
-      ],
-      "discriminator": [
-        6,
-        175,
-        20,
-        155,
-        71,
-        161,
-        109,
-        190
-      ],
+      "docs": ["Finalize redeem: burn tokens and settle fees/net USDC"],
+      "discriminator": [6, 175, 20, 155, 71, 161, 109, 190],
       "accounts": [
         {
           "name": "user",
-          "docs": [
-            "User redeeming"
-          ],
+          "docs": ["User redeeming"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -921,13 +601,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -942,26 +616,13 @@
         },
         {
           "name": "vault_mint",
-          "docs": [
-            "Vault mint PDA"
-          ],
+          "docs": ["Vault mint PDA"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116, 95, 109, 105, 110, 116]
               },
               {
                 "kind": "account",
@@ -972,9 +633,7 @@
         },
         {
           "name": "user_vault_account",
-          "docs": [
-            "User's vault token account (to burn from)"
-          ],
+          "docs": ["User's vault token account (to burn from)"],
           "writable": true
         },
         {
@@ -988,30 +647,8 @@
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -1023,23 +660,17 @@
         },
         {
           "name": "user_stablecoin_account",
-          "docs": [
-            "User's USDC account (net proceeds destination)"
-          ],
+          "docs": ["User's USDC account (net proceeds destination)"],
           "writable": true
         },
         {
           "name": "fee_recipient_stablecoin_account",
-          "docs": [
-            "Fee recipient USDC account (factory)"
-          ],
+          "docs": ["Fee recipient USDC account (factory)"],
           "writable": true
         },
         {
           "name": "vault_admin_stablecoin_account",
-          "docs": [
-            "Vault admin USDC account (management fee share)"
-          ],
+          "docs": ["Vault admin USDC account (management fee share)"],
           "writable": true
         },
         {
@@ -1059,6 +690,10 @@
         {
           "name": "vault_token_amount",
           "type": "u64"
+        },
+        {
+          "name": "etf_share_price",
+          "type": "u64"
         }
       ]
     },
@@ -1068,38 +703,16 @@
         "Get and update accrued management fees for a vault",
         "This function calculates newly accrued fees using live asset prices and balances"
       ],
-      "discriminator": [
-        134,
-        145,
-        47,
-        94,
-        255,
-        206,
-        143,
-        195
-      ],
+      "discriminator": [134, 145, 47, 94, 255, 206, 143, 195],
       "accounts": [
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1114,13 +727,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -1135,38 +742,14 @@
         },
         {
           "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's stablecoin token account (USDC/USDT)"
-          ],
+          "docs": ["Vault's stablecoin token account (USDC/USDT)"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -1201,48 +784,22 @@
     },
     {
       "name": "get_deposit_details",
-      "docs": [
-        "Get deposit details for a user and vault"
-      ],
-      "discriminator": [
-        228,
-        194,
-        58,
-        59,
-        42,
-        195,
-        86,
-        154
-      ],
+      "docs": ["Get deposit details for a user and vault"],
+      "discriminator": [228, 194, 58, 59, 42, 195, 86, 154],
       "accounts": [
         {
           "name": "user",
-          "docs": [
-            "User to get deposit details for"
-          ],
+          "docs": ["User to get deposit details for"],
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1256,13 +813,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -1277,44 +828,18 @@
         },
         {
           "name": "user_vault_account",
-          "docs": [
-            "User's vault token account"
-          ]
+          "docs": ["User's vault token account"]
         },
         {
           "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's stablecoin token account"
-          ],
+          "docs": ["Vault's stablecoin token account"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -1339,41 +864,17 @@
     },
     {
       "name": "get_factory_info",
-      "docs": [
-        "Get factory information including vault count"
-      ],
-      "discriminator": [
-        197,
-        39,
-        92,
-        119,
-        18,
-        147,
-        241,
-        190
-      ],
+      "docs": ["Get factory information including vault count"],
+      "discriminator": [197, 39, 92, 119, 18, 147, 241, 190],
       "accounts": [
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1388,41 +889,17 @@
     },
     {
       "name": "get_vault_fees",
-      "docs": [
-        "Get vault fees (factory fees + vault management fees)"
-      ],
-      "discriminator": [
-        207,
-        90,
-        1,
-        204,
-        61,
-        133,
-        107,
-        227
-      ],
+      "docs": ["Get vault fees (factory fees + vault management fees)"],
+      "discriminator": [207, 90, 1, 204, 61, 133, 107, 227],
       "accounts": [
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1436,13 +913,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -1470,59 +941,31 @@
     },
     {
       "name": "initialize_factory",
-      "docs": [
-        "Initialize the Factory PDA with fee params and admin"
-      ],
-      "discriminator": [
-        179,
-        64,
-        75,
-        250,
-        39,
-        254,
-        240,
-        178
-      ],
+      "docs": ["Initialize the Factory PDA with fee params and admin"],
+      "discriminator": [179, 64, 75, 250, 39, 254, 240, 178],
       "accounts": [
         {
           "name": "admin",
-          "docs": [
-            "Admin who pays rent and becomes the factory admin"
-          ],
+          "docs": ["Admin who pays rent and becomes the factory admin"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
         },
         {
           "name": "fee_recipient",
-          "docs": [
-            "Fee recipient pubkey"
-          ]
+          "docs": ["Fee recipient pubkey"]
         },
         {
           "name": "system_program",
@@ -1561,263 +1004,24 @@
       ]
     },
     {
-      "name": "redeem",
-      "docs": [
-        "Redeem vault tokens and receive back the underlying stablecoin"
-      ],
-      "discriminator": [
-        184,
-        12,
-        86,
-        149,
-        70,
-        196,
-        97,
-        225
-      ],
-      "accounts": [
-        {
-          "name": "user",
-          "docs": [
-            "User redeeming vault tokens"
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "docs": [
-            "Vault PDA - seeds: [\"vault\", factory.key(), vault_index]"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "factory"
-              },
-              {
-                "kind": "arg",
-                "path": "vault_index"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault_mint",
-          "docs": [
-            "Vault token mint"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  109,
-                  105,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault"
-              }
-            ]
-          }
-        },
-        {
-          "name": "user_vault_account",
-          "docs": [
-            "User's vault token account (to burn tokens from)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "user_stablecoin_account",
-          "docs": [
-            "User's stablecoin token account (to receive stablecoin)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "stablecoin_mint",
-          "docs": [
-            "Stablecoin mint (USDC, USDT, etc.)"
-          ]
-        },
-        {
-          "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's stablecoin token account (to send stablecoin from)"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault"
-              }
-            ]
-          }
-        },
-        {
-          "name": "fee_recipient_stablecoin_account",
-          "docs": [
-            "Fee recipient's stablecoin token account"
-          ],
-          "writable": true
-        },
-        {
-          "name": "vault_admin_stablecoin_account",
-          "docs": [
-            "Vault admin's stablecoin token account (to receive management fees)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "jupiter_program",
-          "docs": [
-            "Jupiter program account (optional - only needed if Jupiter swap is provided)"
-          ],
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "vault_index",
-          "type": "u32"
-        },
-        {
-          "name": "vault_token_amount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "set_vault_paused",
-      "docs": [
-        "Set vault paused or active (admin only)"
-      ],
-      "discriminator": [
-        239,
-        131,
-        203,
-        69,
-        243,
-        11,
-        234,
-        153
-      ],
+      "docs": ["Set vault paused or active (admin only)"],
+      "discriminator": [239, 131, 203, 69, 243, 11, 234, 153],
       "accounts": [
         {
           "name": "admin",
-          "docs": [
-            "Admin updating paused state"
-          ],
+          "docs": ["Admin updating paused state"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1832,13 +1036,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -1869,49 +1067,23 @@
     },
     {
       "name": "transfer_vault_to_user",
-      "docs": [
-        "Transfer USDC from vault to user for swapping"
-      ],
-      "discriminator": [
-        21,
-        41,
-        8,
-        255,
-        228,
-        238,
-        37,
-        212
-      ],
+      "docs": ["Transfer USDC from vault to user for swapping"],
+      "discriminator": [21, 41, 8, 255, 228, 238, 37, 212],
       "accounts": [
         {
           "name": "user",
-          "docs": [
-            "User receiving the USDC from vault"
-          ],
+          "docs": ["User receiving the USDC from vault"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -1926,13 +1098,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -1947,39 +1113,15 @@
         },
         {
           "name": "vault_stablecoin_account",
-          "docs": [
-            "Vault's stablecoin token account (source)"
-          ],
+          "docs": ["Vault's stablecoin token account (source)"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116,
-                  95,
-                  115,
-                  116,
-                  97,
-                  98,
-                  108,
-                  101,
-                  99,
-                  111,
-                  105,
-                  110,
-                  95,
-                  97,
-                  99,
-                  99,
-                  111,
-                  117,
-                  110,
-                  116
+                  118, 97, 117, 108, 116, 95, 115, 116, 97, 98, 108, 101, 99,
+                  111, 105, 110, 95, 97, 99, 99, 111, 117, 110, 116
                 ]
               },
               {
@@ -1991,9 +1133,7 @@
         },
         {
           "name": "user_stablecoin_account",
-          "docs": [
-            "User's stablecoin token account (destination)"
-          ],
+          "docs": ["User's stablecoin token account (destination)"],
           "writable": true
         },
         {
@@ -2017,51 +1157,56 @@
       ]
     },
     {
-      "name": "update_factory_fees",
-      "docs": [
-        "Update factory fees (only admin can call this)"
-      ],
-      "discriminator": [
-        188,
-        151,
-        209,
-        161,
-        52,
-        40,
-        223,
-        205
-      ],
+      "name": "update_factory_admin",
+      "docs": ["Update the factory admin (only current admin)"],
+      "discriminator": [184, 83, 195, 10, 115, 92, 160, 182],
       "accounts": [
         {
           "name": "admin",
-          "docs": [
-            "Admin who can update factory fees"
-          ],
+          "docs": ["Current factory admin"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
+              }
+            ]
+          }
+        },
+        {
+          "name": "new_admin",
+          "docs": ["New admin to set on the factory"]
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_factory_fees",
+      "docs": ["Update factory fees (only admin can call this)"],
+      "discriminator": [188, 151, 209, 161, 52, 40, 223, 205],
+      "accounts": [
+        {
+          "name": "admin",
+          "docs": ["Admin who can update factory fees"],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "factory",
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -2103,46 +1248,22 @@
       "docs": [
         "Withdraw underlying asset from vault to user (for client-side redeem swaps)"
       ],
-      "discriminator": [
-        146,
-        25,
-        134,
-        247,
-        140,
-        38,
-        144,
-        170
-      ],
+      "discriminator": [146, 25, 134, 247, 140, 38, 144, 170],
       "accounts": [
         {
           "name": "user",
-          "docs": [
-            "User redeeming (and receiving the asset)"
-          ],
+          "docs": ["User redeeming (and receiving the asset)"],
           "writable": true,
           "signer": true
         },
         {
           "name": "factory",
-          "docs": [
-            "Factory PDA - seeds: [\"factory_v2\"]"
-          ],
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
           "pda": {
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  102,
-                  97,
-                  99,
-                  116,
-                  111,
-                  114,
-                  121,
-                  95,
-                  118,
-                  50
-                ]
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
               }
             ]
           }
@@ -2157,13 +1278,7 @@
             "seeds": [
               {
                 "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
+                "value": [118, 97, 117, 108, 116]
               },
               {
                 "kind": "account",
@@ -2178,16 +1293,12 @@
         },
         {
           "name": "vault_asset_account",
-          "docs": [
-            "Source: vault's ATA for the asset"
-          ],
+          "docs": ["Source: vault's ATA for the asset"],
           "writable": true
         },
         {
           "name": "user_asset_account",
-          "docs": [
-            "Destination: user's ATA for the asset"
-          ],
+          "docs": ["Destination: user's ATA for the asset"],
           "writable": true
         },
         {
@@ -2214,135 +1325,49 @@
   "accounts": [
     {
       "name": "Factory",
-      "discriminator": [
-        159,
-        68,
-        192,
-        61,
-        48,
-        249,
-        216,
-        202
-      ]
+      "discriminator": [159, 68, 192, 61, 48, 249, 216, 202]
     },
     {
       "name": "Vault",
-      "discriminator": [
-        211,
-        8,
-        232,
-        43,
-        2,
-        152,
-        117,
-        119
-      ]
+      "discriminator": [211, 8, 232, 43, 2, 152, 117, 119]
     }
   ],
   "events": [
     {
       "name": "AccruedFeesDistributed",
-      "discriminator": [
-        143,
-        6,
-        161,
-        12,
-        246,
-        45,
-        154,
-        237
-      ]
+      "discriminator": [143, 6, 161, 12, 246, 45, 154, 237]
     },
     {
       "name": "DepositEvent",
-      "discriminator": [
-        120,
-        248,
-        61,
-        83,
-        31,
-        142,
-        107,
-        144
-      ]
+      "discriminator": [120, 248, 61, 83, 31, 142, 107, 144]
+    },
+    {
+      "name": "FactoryAdminUpdated",
+      "discriminator": [166, 214, 90, 195, 44, 102, 200, 52]
     },
     {
       "name": "FactoryFeesUpdated",
-      "discriminator": [
-        151,
-        136,
-        58,
-        41,
-        189,
-        89,
-        8,
-        240
-      ]
+      "discriminator": [151, 136, 58, 41, 189, 89, 8, 240]
     },
     {
       "name": "FactoryInitialized",
-      "discriminator": [
-        20,
-        86,
-        103,
-        75,
-        20,
-        220,
-        162,
-        63
-      ]
+      "discriminator": [20, 86, 103, 75, 20, 220, 162, 63]
     },
     {
       "name": "RedeemEvent",
-      "discriminator": [
-        90,
-        114,
-        83,
-        146,
-        212,
-        26,
-        217,
-        59
-      ]
+      "discriminator": [90, 114, 83, 146, 212, 26, 217, 59]
     },
     {
       "name": "VaultCreated",
-      "discriminator": [
-        117,
-        25,
-        120,
-        254,
-        75,
-        236,
-        78,
-        115
-      ]
+      "discriminator": [117, 25, 120, 254, 75, 236, 78, 115]
     },
     {
       "name": "VaultPaused",
-      "discriminator": [
-        198,
-        157,
-        22,
-        151,
-        68,
-        100,
-        162,
-        35
-      ]
+      "discriminator": [198, 157, 22, 151, 68, 100, 162, 35]
     },
     {
       "name": "VaultResumed",
-      "discriminator": [
-        208,
-        173,
-        238,
-        64,
-        33,
-        63,
-        226,
-        151
-      ]
+      "discriminator": [208, 173, 238, 64, 33, 63, 226, 151]
     }
   ],
   "errors": [
@@ -2729,6 +1754,26 @@
           {
             "name": "platform_fee_ratio_bps",
             "type": "u16"
+          }
+        ]
+      }
+    },
+    {
+      "name": "FactoryAdminUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "previous_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "new_admin",
+            "type": "pubkey"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }

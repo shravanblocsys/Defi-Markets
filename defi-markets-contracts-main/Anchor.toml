@@ -5,15 +5,17 @@ package_manager = "yarn"
 resolution = true
 skip-lint = false
 
-[programs.mainnet]
-vault_mvp = "5tAdLifeaGj3oUVVpr7gG5ntjW6c2Lg3sY2ftBCi8MkZ"
+[programs.devnet]
+vault_mvp = "BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "mainnet"
-wallet = "keypairs/admin-keypair.json"
+cluster = "devnet"
+# For Ledger wallet, use: wallet = "usb://ledger"
+# For file-based keypair, use: wallet = "keypairs/admin-keypair.json"
+wallet = "usb://ledger"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

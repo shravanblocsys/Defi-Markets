@@ -18,9 +18,6 @@ import idl from "./target/idl/vault_mvp.json";
 
 // Configuration
 const RPC_URL = process.env.RPC_URL || "https://api.mainnet-beta.solana.com";
-const PRIVATE_KEY = process.env.PRIVATE_KEY
-  ? JSON.parse(process.env.PRIVATE_KEY)
-  : [195,202,161,3,114,129,253,3,83,2,189,101,201,224,215,42,197,16,141,125,117,25,148,108,137,203,148,87,142,129,22,236,173,70,20,149,74,139,63,243,169,112,31,12,248,231,56,250,207,205,144,152,101,185,63,192,34,217,83,190,37,55,2,209];
 
 const connection = new Connection(RPC_URL, "confirmed");
 const wallet = new anchor.Wallet(Keypair.fromSecretKey(new Uint8Array(PRIVATE_KEY)));

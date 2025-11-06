@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("5tAdLifeaGj3oUVVpr7gG5ntjW6c2Lg3sY2ftBCi8MkZ");
+declare_id!("BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB");
 
 // ---------- Module Declarations ----------
 pub mod constants;
@@ -20,6 +20,13 @@ pub use events::*;
 #[program]
 pub mod vault_mvp {
     use super::*;
+
+    /// Update the factory admin (only current admin)
+    pub fn update_factory_admin(
+        ctx: Context<UpdateFactoryAdmin>,
+    ) -> Result<()> {
+        instructions::update_factory_admin(ctx)
+    }
 
     /// Initialize the Factory PDA with fee params and admin
     pub fn initialize_factory(
@@ -125,17 +132,9 @@ pub mod vault_mvp {
         ctx: Context<FinalizeRedeem>,
         vault_index: u32,
         vault_token_amount: u64,
+        etf_share_price: u64,
     ) -> Result<()> {
-        instructions::finalize_redeem(ctx, vault_index, vault_token_amount)
-    }
-
-    /// Redeem vault tokens and receive back the underlying stablecoin
-    pub fn redeem(
-        ctx: Context<Redeem>,
-        vault_index: u32,
-        vault_token_amount: u64,
-    ) -> Result<()> {
-        instructions::redeem(ctx, vault_index, vault_token_amount)
+        instructions::finalize_redeem(ctx, vault_index, vault_token_amount, etf_share_price)
     }
 
 

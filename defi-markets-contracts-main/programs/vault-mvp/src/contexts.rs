@@ -115,6 +115,26 @@ pub struct UpdateFactoryFees<'info> {
 }
 
 #[derive(Accounts)]
+pub struct UpdateFactoryAdmin<'info> {
+    /// Current factory admin
+    #[account(mut, signer)]
+    pub admin: Signer<'info>,
+
+    /// Factory PDA - seeds: ["factory_v2"]
+    #[account(
+        mut,
+        seeds = [b"factory_v2"],
+        bump = factory.bump,
+        constraint = factory.admin == admin.key() @ ErrorCode::Unauthorized
+    )]
+    pub factory: Account<'info, Factory>,
+
+    /// New admin to set on the factory
+    /// CHECK: only the pubkey is stored
+    pub new_admin: UncheckedAccount<'info>,
+}
+
+#[derive(Accounts)]
 pub struct GetFactoryInfo<'info> {
     /// Factory PDA - seeds: ["factory_v2"]
     #[account(

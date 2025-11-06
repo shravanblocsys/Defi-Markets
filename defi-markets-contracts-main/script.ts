@@ -4,13 +4,6 @@ import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo, getAccount, getMin
 import { VaultMvp } from "./target/types/vault_mvp";
 import idl from "./target/idl/vault_mvp.json";
 
-// Hardcoded private key (replace with your actual private key array)
-// const PRIVATE_KEY = [218, 160, 156, 207, 217, 144, 46, 141, 140, 106, 192, 30, 136, 203, 151, 236, 131, 86, 7, 12, 222, 40, 56, 4, 29, 98, 129, 224, 192, 213, 235, 79, 2, 121, 37, 132, 3, 119, 111, 162, 29, 181, 242, 207, 186, 240, 82, 113, 40, 81, 158, 52, 38, 245, 133, 72, 218, 91, 179, 240, 231, 33, 143, 187];
-// const PRIVATE_KEY = [8,89,214,209,151,193,55,105,55,165,23,237,83,215,123,220,196,159,100,66,122,214,46,183,198,34,51,226,117,230,0,13,126,183,64,88,155,122,33,214,151,68,146,190,7,32,204,198,64,136,250,102,81,17,68,128,146,121,14,75,154,41,111,80];
-const PRIVATE_KEY = [195,202,161,3,114,129,253,3,83,2,189,101,201,224,215,42,197,16,141,125,117,25,148,108,137,203,148,87,142,129,22,236,173,70,20,149,74,139,63,243,169,112,31,12,248,231,56,250,207,205,144,152,101,185,63,192,34,217,83,190,37,55,2,209];
-// [211,99,57,232,164,104,188,33,181,164,72,175,213,153,155,99,144,114,240,86,225,124,121,72,69,123,76,24,11,46,6,111,225,85,53,7,116,210,156,66,80,9,148,13,250,186,234,244,198,23,171,96,222,93,214,215,70,57,95,68,225,209,217,238];// Hardcoded wallet address (replace with your actual public key)
-// const WALLET_ADDRESS = "AexZm9S565MmrLuJvNvtvfoAwB5z52Wcj6bgJ9xaHrA";
-// const WALLET_ADDRESS = "4t9Nu6Tm2QGgp3TTbonrQ9GtkEwu13cbt9jrfA67KAbD";
 const WALLET_ADDRESS = "CfPWebeQs8HqdUx1Y7bjsywAwAQmnmRYHo5eQstbQAgY";
 // Example token mint addresses (replace with actual token mints)
 const SOL_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Wrapped SOL
@@ -18,6 +11,14 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 
 // Store created stablecoin mint address
 let CREATED_STABLECOIN_MINT: PublicKey | null = null;
+
+const PRIVATE_KEY = `
+{
+  "secretKey": [
+    ...
+  ]
+}
+`;
 
 // Hardcoded stablecoin mint address (created earlier)
 const STABLECOIN_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
@@ -47,7 +48,7 @@ function generateRandomVaultSymbol(): string {
 }
 
 // Create keypair from hardcoded private key
-const keypair = Keypair.fromSecretKey(new Uint8Array(PRIVATE_KEY));
+const keypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(PRIVATE_KEY)));
 
 // Provider + connection
 const RPC_URL = "https://api.mainnet-beta.solana.com";

@@ -611,7 +611,7 @@ const OverviewTab = ({
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-foreground">
-                          {asset.tokenBalanceFormatted?.toFixed(6) ||
+                          {asset.tokenBalanceFormatted?.toFixed(asset.decimals || 6) ||
                             "0.000000"}
                         </p>
                         {/* <p className="text-xs text-muted-foreground">
