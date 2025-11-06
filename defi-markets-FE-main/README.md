@@ -178,3 +178,6 @@ For endpoint details, request/response schemas, and auth flow, see:
 ## 🔗 Links
 
 - [Live Demo](https://app.defimarkets.finance/)
+   - Live Demo is secured by login, use below credentials:
+      - Username: defi-market
+      - Password: DfmEtf#2025      

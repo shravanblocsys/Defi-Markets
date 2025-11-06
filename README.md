@@ -1,17 +1,50 @@
-# DeFi Markets
+# DeFi Markets - DFM
+The Fund Management Operating System for Internet Capital Markets
 
-A full-stack, Solana-powered platform for permissionless ETF-style vaults. This repo contains:
+At its core are Decentralized Traded Funds (DTFs) — 
+ETF-like on-chain portfolios, where NAV, fees, and governance are fully deterministic.
+- Launch a DTF in minutes: Wallet → Parameters → Allocations → Confirm → DTF live in Marketplace.
+- Deposit/redeem at NAV → Trades execute through Jupiter Ultra V3 liquidity → Underlying assets are stored in a non-custodial vault.
+- Fees accrue continuously onchain.
+
+We're a Web3 x TradFi team:
+- 70+ Web3 projects launched
+- $50B+ in TradFi investment and capital raising
+
+We’ve seen both sides — and we’re building the bridge.
+
+## Socials
+
+- [ X ](https://x.com/DefiMarkets)
+- [Waitlist](https://dfm.finance/)
+- [LinkedIn](https://www.linkedin.com/company/defi-markets/)
+---
+
+This repo contains:
 
 - User-facing Web App (FE)
 - Administrative Dashboard (Admin FE)
 - Backend API (NestJS)
 - Solana Programs and CLI scripts (Anchor)
 
+NOTE: 
+- Full repo (private) -> https://github.com/defi-markets
+- access shared with hackathon@colosseum.org
+- Demo is currently being updated, our team is working on a migration!
+  - Improvement in Jupiter ultra API execution -> buy/sell underlying assets
+  - Share price vs deposit/redeem
+  - And more
+
 ---
 
 ## Linked README
 
 - [DeFi Markets App](defi-markets-FE-main/README.md)
+  - [Live Demo](https://app.defimarkets.finance/)
+   - Live Demo is secured by login, use below credentials:
+     - Username: defi-market
+     - Password: DfmEtf#2025
+       - PLEASE NOTE: a new program and contracts were deployed, and our team is working on the migration!
 - [DeFi Markets Admin App](defi-markets-admin-main/README.md)
 - [DeFi Markets Backend](defi-markets-BE-main/README.md)
 - [ETF Vaults - Solana Smart Contracts](defi-markets-contracts-main/README.md)
