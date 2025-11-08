@@ -134,37 +134,6 @@ anchor deploy
 
 For comprehensive scripts and flows (deposit/redeem, fees, vault mgmt), see contracts README and `README-DEPOSIT-REDEEM.md`.
 
----
-
-## Environment Variables (Summary)
-
-Consolidated highlights; see each package README for complete lists.
-
-- Frontend (`defi-markets-FE-main`)
-
-  - `VITE_API_BASE_URL` (e.g., http://0.0.0.0:3400/api/v1)
-  - `VITE_SOLANA_NETWORK` (devnet | mainnet-beta)
-  - `VITE_VAULT_FACTORY_PROGRAM_ID`
-  - `VITE_HELIUS_API_KEY` or `VITE_*_RPC_URL`
-
-- Admin (`defi-markets-admin-main`)
-
-  - `VITE_API_BASE_URL` (e.g., http://0.0.0.0:3400/api)
-  - `VITE_FEES_ID`
-  - `VITE_SOLANA_NETWORK`, `VITE_SOLANA_RPC_URL`, `VITE_VAULT_FACTORY_PROGRAM_ID`
-
-- Backend (`defi-markets-BE-main`)
-  - Mongo: `DB_URL`
-  - JWT: `WEBTOKEN_SECRET_KEY`, `WEBTOKEN_EXPIRATION_TIME`
-  - Solana/Helius: `SOLANA_NETWORK`, `SOLANA_RPC_URL`, `HELIUS_API_KEY`, `HELIUS_WEBHOOK_SECRET`
-  - Vault factory: `SOLANA_VAULT_FACTORY_ADDRESS`
-  - Redis: `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_TTL`
-  - Rate limit: `RATE_LIMIT_REQ_COUNT`, `RATE_LIMIT_TIME_WINDOW`
-  - Cron/Cooldown: `CRON_JOB_INTERVAL`, `COOLDOWN_PERIOD`
-  - Twitter OAuth: `TWITTER_CLIENT_ID`, `TWITTER_CLIENT_SECRET`, `BASE_URL`, `REDIRECT_URL`
-
----
-
 ## Solana Program Concepts (Contracts)
 
 - Single program with Factory module and per‑vault PDAs

@@ -92,34 +92,6 @@ The project uses several configuration files:
 - `tsconfig.json` - TypeScript configuration
 - `eslint.config.js` - ESLint rules
 
-## 🔑 Environment Variables
-
-Create a `.env` in the project root (values shown are examples/defaults):
-
-```
-# API
-VITE_API_BASE_URL=http://0.0.0.0:3400/api/v1
-
-VITE_FEES_ID=
-
-VITE_SOLANA_NETWORK=mainnet-beta  # or devnet
-
-# Solana Programs
-VITE_VAULT_FACTORY_PROGRAM_ID=
-
-# RPC config (used by src/lib/solana.ts)
-# Option A: Use Helius (recommended)
-VITE_HELIUS_API_KEY=
-
-# Option B: Custom RPC overrides (takes precedence if set)
-VITE_MAINNET_RPC_URL=
-VITE_DEVNET_RPC_URL=https://api.devnet.solana.com/
-
-#Twitter connect api
-VITE_BASE_URL= (backend URL)
-
-```
-
 ## 🔗 Backend Proxy & Dev Server
 
 - Dev server is configured in `vite.config.ts` to run on port `8080`.
@@ -177,7 +149,4 @@ For endpoint details, request/response schemas, and auth flow, see:
 
 ## 🔗 Links
 
-- [Live Demo](https://app.defimarkets.finance/)
-   - Live Demo is secured by login, use below credentials:
-      - Username: defi-market
-      - Password: DfmEtf#2025      
+- [Live Demo](https://defimarkets.blocsys.com/)

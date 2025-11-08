@@ -272,23 +272,6 @@ Built with a comprehensive design system featuring:
 
 ---
 
-## 🔧 Environment Configuration
-
-Create a `.env` file in the project root (same level as `package.json`). These variables are read by Vite (prefixed with `VITE_`).
-
-```env
-VITE_API_BASE_URL=backend_url
-VITE_FEES_ID=
-VITE_SOLANA_NETWORK=devnet
-VITE_SOLANA_RPC_URL=rpc-url-mainnet
-VITE_VAULT_FACTORY_PROGRAM_ID=
-```
-
-Notes
-
-- `VITE_API_BASE_URL` is automatically prefixed in all requests via the shared `apiRequest` helper and the `Authorization` header is attached when a token is present in `sessionStorage`.
-- Default base URL (if env is missing) is `http://0.0.0.0:3400/api`.
-
 ## 🔐 Solana Sign-In (SIWS) Flow
 
 The app implements a 4-step Solana Sign-In (Sign-In With Solana) flow used for wallet authentication.
@@ -375,7 +358,3 @@ Redux store configuration is in `src/store/index.ts` with slices:
 
 - `ADMIN_PAGES_API_USAGE.md`: page-by-page API calls
 - `ANCHOR_INTEGRATION_SUMMARY.md`: high-level Anchor/IDL integration notes
-
-## 🔗 Links
-
-- [Admin App](https://admin.app.defimarkets.finance/)
