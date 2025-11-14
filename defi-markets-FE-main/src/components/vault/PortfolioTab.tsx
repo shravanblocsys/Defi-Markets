@@ -27,6 +27,7 @@ const PortfolioTab = ({
   portfolioData,
   loading = false,
 }: PortfolioTabProps) => {
+  console.log("portfolioData", portfolioData);
   if (loading) {
     return (
       <Card className="glass-card">

@@ -34,9 +34,14 @@ import { VaultInsightsModule } from "../vault-insights/vault-insights.module";
 import { CronJobModule } from "../cron-job/cron-job.module";
 import { VaultManagementFeesModule } from "../vault-management-fees/vault-management-fees.module";
 import { SharePriceCronModule } from "../share-price-cron/share-price-cron.module";
+import { SentryGlobalFilter, SentryModule } from "@sentry/nestjs/setup";
+import { APP_FILTER } from "@nestjs/core";
+import { GlobalExceptionFilter } from "../../filters/global-exception.filter";
+import * as Sentry from "@sentry/nestjs";
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -52,6 +57,22 @@ import { SharePriceCronModule } from "../share-price-cron/share-price-cron.modul
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
         const isDev = configService.isEnv("dev");
+        const Transport = require("winston-transport");
+
+        // Create official Sentry Winston transport
+        // This sends all logs to Sentry using the official integration
+        // See: https://docs.sentry.io/platforms/javascript/guides/nestjs/logs/#winston-integration
+        const SentryWinstonTransport = Sentry.createSentryWinstonTransport(
+          Transport,
+          {
+            // Send all log levels that match Winston's logger level
+            // This ensures all logs written to files also appear in Sentry
+            // Valid Sentry log levels: trace, debug, info, warn, error, fatal
+            levels: isDev
+              ? ["error", "warn", "info", "debug"]
+              : ["error", "warn", "info"],
+          }
+        );
 
         return {
           level: isDev ? "debug" : "info",
@@ -113,6 +134,10 @@ import { SharePriceCronModule } from "../share-price-cron/share-price-cron.modul
                 winston.format.json()
               ),
             }),
+
+            // Official Sentry Winston transport - sends logs to Sentry dashboard
+            // All logs written to files will also be visible in Sentry
+            new SentryWinstonTransport() as any,
           ],
         };
       },
@@ -146,6 +171,11 @@ import { SharePriceCronModule } from "../share-price-cron/share-price-cron.modul
   providers: [
     AppService,
     { provide: APP_INTERCEPTOR, useClass: ResponseMiddleware },
+    {
+      provide: APP_FILTER,
+      useClass: SentryGlobalFilter,
+      // useClass: GlobalExceptionFilter,
+    },
   ],
 })
 export class AppModule implements NestModule {
@@ -153,6 +183,7 @@ export class AppModule implements NestModule {
     consumer
       .apply(AuthMiddleware)
       .exclude(
+        "/debug-sentry",
         // Login/Register
         "api/v1/auth/login",
         "api/v1/auth/register",
@@ -201,7 +232,7 @@ export class AppModule implements NestModule {
         "api/v1/share-price-cron/status",
         //Vault Management Fees
         "api/v1/vault-management-fees/vault-summary",
-        "api/v1/charts/vaults/total-usd",
+        "api/v1/charts/vaults/total-usd"
       )
       .forRoutes("*");
   }

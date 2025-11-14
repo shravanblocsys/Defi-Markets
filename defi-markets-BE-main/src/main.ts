@@ -14,6 +14,7 @@ import { ConfigService } from "./modules/config/config.service";
 import fastifyCookie from "fastify-cookie";
 import { configurePassport } from "./modules/auth/passport.config";
 import { sessionStore } from "./modules/auth/simple-session-store";
+import "./instructions";
 
 /**
  * The url endpoint for open api ui
@@ -284,8 +285,8 @@ export const SWAGGER_API_CURRENT_VERSION = "1.0";
   await app.listen(port, "0.0.0.0");
 
   console.log(`DeFi Markets API is running on port ${port}`);
-  console.log(`Health check available at http://localhost:${port}/api/health`);
+  console.log(`Health check available at http://0.0.0.0":${port}/api/health`);
   console.log(
-    `API documentation available at http://localhost:${port}/${SWAGGER_API_ROOT}`
+    `API documentation available at http://0.0.0.0:${port}/${SWAGGER_API_ROOT}`
   );
 })();

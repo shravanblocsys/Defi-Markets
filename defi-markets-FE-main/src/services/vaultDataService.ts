@@ -299,26 +299,18 @@ class VaultDataService {
       // console.log(`🔍 Fetching prices for: ${ids}`);
 
       const response = await fetch(
-        `https://lite-api.jup.ag/price/v3?ids=${ids}`,
+        `${import.meta.env.VITE_JUPITER_PRICE_API}${ids}`,
         {
           method: "GET",
           headers: {
             Accept: "application/json",
+            "x-api-key": import.meta.env.VITE_JUPITER_API_KEY,
           },
         }
       );
-
-      if (!response.ok) {
-        throw new Error(
-          `Jupiter API error: ${response.status} ${response.statusText}`
-        );
-      }
-
       const data = await response.json();
-      // console.log("💰 Token prices fetched:", data);
-
+      console.log("💰 Token prices fetched:", data);
       const prices: TokenPrice[] = [];
-
       for (const [mintAddress, priceData] of Object.entries(data)) {
         const price = priceData as any;
         prices.push({

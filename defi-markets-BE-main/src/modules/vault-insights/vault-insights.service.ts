@@ -155,6 +155,11 @@ export class VaultInsightsService {
           const assetAllocation = asset.assetAllocation as any;
           const mint = assetAllocation?.mintAddress || "";
           const priceData = await this.getTokenPriceData(mint);
+          this.logger.log("priceData", priceData);
+          this.logger.log("mint", mint);
+          this.logger.log("assetAllocation", assetAllocation);
+          this.logger.log("asset", asset);
+          this.logger.log("vault", vault);
 
           // Get token balance from vault contract
           let tokenBalance = 0;
@@ -334,13 +339,23 @@ export class VaultInsightsService {
 
       // 2) Fallback to Jupiter API
       const baseUrl = this.configService.get("JUPITER_API_BASE_URL");
+      const jupiterApiKey = this.configService.get("JUPITER_API_KEY");
       this.logger.log("baseUrl", baseUrl);
       const url = `${baseUrl}/price/v3?ids=${mintAddress}&showExtraInfo=true`;
       this.logger.log("url", url);
-      this.logger.debug(`Fetching price data for mint: ${mintAddress}`);
+      this.logger.log(`Fetching price data for mint: ${mintAddress}`);
 
-      const response = await firstValueFrom(this.httpService.get(url));
+      // Prepare headers with API key if available
+      const headers: any = {};
+      if (jupiterApiKey) {
+        headers["x-api-key"] = jupiterApiKey;
+      }
+
+      const response = await firstValueFrom(
+        this.httpService.get(url, { headers })
+      );
       const payload = response?.data;
+      this.logger.log("payload", payload);
       // Jupiter v3 shape: { data: { [mint]: { usdPrice, priceChange24h, decimals, ... } } }
       let price = 0;
       let change24h = 0;
@@ -1054,12 +1069,14 @@ export class VaultInsightsService {
     let apy: number | null = null;
 
     try {
-      if (vaultAddress) {
-        // Use net TVL = deposits - redeems
-        totalValueLocked =
-          await this.vaultDepositService.getNetValueLockedByVaultAddress(
-            vaultAddress
-          );
+      if (vaultId) {
+        // Use on-chain NAV as totalValueLocked from getVaultSharePrice
+        const sharePriceData = await this.chartsService.getVaultSharePrice(
+          vaultId.toString()
+        );
+        if (sharePriceData && sharePriceData.nav !== null && sharePriceData.nav !== undefined) {
+          totalValueLocked = sharePriceData.nav; // NAV is already in USD (converted from lamports)
+        }
       }
     } catch (e: any) {
       this.logger.warn(

@@ -130,6 +130,7 @@ pub fn create_vault(
     // Dynamic validation based on account size
     let num_assets = underlying_assets.len();
     let required_space = Vault::calculate_space(num_assets);
+    let allocated_space = Vault::INIT_SPACE;
     
     require!(
         num_assets >= MIN_UNDERLYING_ASSETS && num_assets <= MAX_UNDERLYING_ASSETS,
@@ -138,6 +139,13 @@ pub fn create_vault(
     
     require!(
         required_space <= MAX_ACCOUNT_SIZE,
+        ErrorCode::AccountTooLarge
+    );
+    
+    // Ensure the required space fits within the allocated space
+    // INIT_SPACE is set to MAX_UNDERLYING_ASSETS (240) to support any number of assets
+    require!(
+        required_space <= allocated_space,
         ErrorCode::AccountTooLarge
     );
     require!(
@@ -165,10 +173,14 @@ pub fn create_vault(
 
     factory.vault_count = factory.vault_count.checked_add(1).unwrap();
 
-
-    // Charge one-time creation fee: fixed 10 USDC (6 decimals)
-    // 10 USDC = 10_000_000 in raw units for 6 decimals
-    let creation_fee_amount: u64 = 10_000_000;
+    // Charge one-time creation fee: use configurable fee from factory
+    // Fee is stored in USDC with 6 decimals (e.g., 10 USDC = 10_000_000)
+    // Fallback to default if somehow 0 (safety check)
+    let creation_fee_amount: u64 = if factory.vault_creation_fee_usdc == 0 {
+        DEFAULT_VAULT_CREATION_FEE_USDC
+    } else {
+        factory.vault_creation_fee_usdc
+    };
     let fee_cpi_accounts = token::Transfer {
         from: ctx.accounts.admin_stablecoin_account.to_account_info(),
         to: ctx

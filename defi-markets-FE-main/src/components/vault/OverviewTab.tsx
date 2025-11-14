@@ -168,6 +168,11 @@ const OverviewTab = ({
   console.log("totalSupply", totalSupply);
   console.log("vault.totalSupply", vault.totalSupply);
   const { toast } = useToast();
+  console.log("portfolioData", portfolioData);
+
+  // Calculate minimum deposit based on number of assets in vault
+  const assetCount = portfolioData?.assets?.length || 0;
+  const calculatedMinDeposit = assetCount > 0 ? assetCount : miniDeposit || 0;
   const [selectedTimeRange, setSelectedTimeRange] = useState("1D");
   const [sharePriceChartData, setSharePriceChartData] = useState<
     Array<{
@@ -284,7 +289,6 @@ const OverviewTab = ({
       console.error("Error fetching share price chart data:", error);
     }
   };
-
 
   useEffect(() => {
     fetchSharePriceChartData(vaultId);
@@ -456,7 +460,7 @@ const OverviewTab = ({
                   <div>
                     <p className="text-xs text-muted-foreground">TVL</p>
                     <p className="text-sm font-medium text-foreground">
-                    {formatCurrency(currentNav)}
+                      {formatCurrency(currentNav)}
                     </p>
                   </div>
                   <div>
@@ -611,8 +615,9 @@ const OverviewTab = ({
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-foreground">
-                          {asset.tokenBalanceFormatted?.toFixed(asset.decimals || 6) ||
-                            "0.000000"}
+                          {asset.tokenBalanceFormatted?.toFixed(
+                            asset.decimals || 6
+                          ) || "0.000000"}
                         </p>
                         {/* <p className="text-xs text-muted-foreground">
                           {asset.tokenBalance?.toLocaleString() || "0"} units
@@ -672,7 +677,7 @@ const OverviewTab = ({
                           className="pr-20 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
                         <div className="absolute right-1 top-1/2 -translate-y-1/2 flex gap-1">
-                          {miniDeposit && miniDeposit > 0 && (
+                          {calculatedMinDeposit > 0 && (
                             <Button
                               type="button"
                               variant="outline"
@@ -680,7 +685,9 @@ const OverviewTab = ({
                               className="h-6 px-2 text-xs"
                               onClick={() =>
                                 setDepositAmount &&
-                                setDepositAmount(miniDeposit.toString())
+                                setDepositAmount(
+                                  calculatedMinDeposit.toString()
+                                )
                               }
                             >
                               Min
@@ -711,10 +718,10 @@ const OverviewTab = ({
                         </span>
                         <span>Balance: {userUSDCBalance.toFixed(6)} USDC</span>
                       </div>
-                      {miniDeposit && miniDeposit > 0 && (
+                      {calculatedMinDeposit > 0 && (
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
                           <Info className="w-3 h-3" />
-                          Minimum deposit: {miniDeposit}{" "}
+                          Minimum deposit: {calculatedMinDeposit}{" "}
                           {selectedToken || "USDC"}
                         </p>
                       )}

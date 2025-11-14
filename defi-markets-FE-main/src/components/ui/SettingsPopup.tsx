@@ -31,6 +31,71 @@ interface SettingsPopupProps {
   onClose: () => void;
 }
 
+// Helper to clean up error messages (remove regex patterns, make user-friendly)
+const cleanErrorMessage = (msg: string): string => {
+  return msg.replace(/must match \/.*\/ regular expression/g, (match) => {
+    // Extract the pattern and make it more readable
+    const patternMatch = match.match(/\/(.*)\//);
+    if (patternMatch) {
+      const pattern = patternMatch[1];
+      if (pattern === "^[a-zA-Z ]+$") {
+        return "must contain only letters and spaces";
+      }
+      return match;
+    }
+    return match;
+  });
+};
+
+// Helper to format an array of error messages
+const formatErrorArray = (errors: string[]): string => {
+  return errors
+    .map((msg, index) => {
+      const cleanedMsg = cleanErrorMessage(msg);
+      return `${index + 1}. ${cleanedMsg}`;
+    })
+    .join("\n");
+};
+
+// Helper function to format error messages nicely
+const formatErrorMessage = (error: string | string[] | undefined): string => {
+  if (!error) return "An error occurred";
+
+  // If it's already an array, format it
+  if (Array.isArray(error)) {
+    return formatErrorArray(error);
+  }
+
+  // If it's a string, check if it contains comma-separated errors (from backend)
+  // or line breaks (from our API service)
+  const errorString = String(error);
+
+  // Check if it's a comma-separated list that should be split
+  // Common pattern: "error1, error2" or "error1,error2"
+  if (errorString.includes(", ") || errorString.includes(",")) {
+    // Split by comma and clean up
+    const errors = errorString
+      .split(/,+/)
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+
+    if (errors.length > 1) {
+      return formatErrorArray(errors);
+    }
+  }
+
+  // Check if it contains line breaks (from our formatted messages)
+  if (errorString.includes("\n")) {
+    const errors = errorString.split("\n").filter((e) => e.trim().length > 0);
+    if (errors.length > 1) {
+      return formatErrorArray(errors);
+    }
+  }
+
+  // Single error message - clean up regex patterns
+  return cleanErrorMessage(errorString);
+};
+
 const SettingsPopup = ({ isOpen, onClose }: SettingsPopupProps) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
@@ -230,21 +295,47 @@ const SettingsPopup = ({ isOpen, onClose }: SettingsPopupProps) => {
         });
         onClose();
       } else {
+        // Extract and format error message from result
+        // result.error should already be an array if it came from originalMessage
+        const errorMessage = formatErrorMessage(
+          result.error || "Failed to update profile"
+        );
+
         toast({
           title: "Error",
-          description: result.error || "Failed to update profile",
+          description: errorMessage,
           variant: "destructive",
         });
       }
     } catch (error: any) {
       console.error("Failed to update profile:", error);
 
-      // Check if it's an ApiError with a specific message from the server
-      const errorMessage = error?.message || "Failed to update profile";
+      // Extract error message from various error formats
+      // Prioritize originalMessage from ApiError to preserve array format
+      let errorMessage: string | string[] = "Failed to update profile";
+
+      // Check if it's an ApiError with originalMessage (array format)
+      if (error?.originalMessage) {
+        errorMessage = error.originalMessage;
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      } else if (error?.message) {
+        // Check if message is already an array
+        errorMessage = Array.isArray(error.message)
+          ? error.message
+          : error.message;
+      } else if (error?.error) {
+        errorMessage = error.error;
+      } else if (Array.isArray(error)) {
+        errorMessage = error;
+      }
+
+      // Format the error message nicely
+      const formattedMessage = formatErrorMessage(errorMessage);
 
       toast({
         title: "Error",
-        description: errorMessage,
+        description: formattedMessage,
         variant: "destructive",
       });
     } finally {

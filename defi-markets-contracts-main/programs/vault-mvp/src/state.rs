@@ -78,8 +78,10 @@ impl Vault {
         8    // accrued_management_fees_usdc
     }
     
-    // Default space for vaults (supports up to ~240 assets within Solana's reallocation limit)
-    pub const INIT_SPACE: usize = Self::calculate_space(240); // Safe within 10,240 byte reallocation limit
+    // Maximum space for vaults - supports up to MAX_UNDERLYING_ASSETS (240) assets
+    // This allows creating vaults with any number of assets from 1 to 240
+    // Note: All vaults allocate space for 240 assets to ensure flexibility
+    pub const INIT_SPACE: usize = Self::calculate_space(MAX_UNDERLYING_ASSETS); // Maximum space for full flexibility
 }
 
 // Stores serialized Jupiter instruction bytes per-asset per-deposit

@@ -272,6 +272,11 @@ Built with a comprehensive design system featuring:
 
 ---
 
+Notes
+
+- `VITE_API_BASE_URL` is automatically prefixed in all requests via the shared `apiRequest` helper and the `Authorization` header is attached when a token is present in `sessionStorage`.
+- Default base URL (if env is missing) is `http://0.0.0.0:3400/api`.
+
 ## 🔐 Solana Sign-In (SIWS) Flow
 
 The app implements a 4-step Solana Sign-In (Sign-In With Solana) flow used for wallet authentication.

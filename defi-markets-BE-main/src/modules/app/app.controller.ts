@@ -3,6 +3,8 @@ import { AppService } from "./app.service";
 import { ApiBearerAuth, ApiResponse } from "@nestjs/swagger";
 import { AuthGuard } from "@nestjs/passport";
 import { Request } from "express";
+import * as Sentry from "@sentry/nestjs";
+
 
 /**
  * App Controller
@@ -16,6 +18,15 @@ export class AppController {
    * @param profileService
    */
   constructor(private readonly appService: AppService) {}
+  @Get("/debug-sentry")
+  getError() {
+    console.log("getError in apps");
+    // Send a log before throwing the error
+    Sentry.logger.info("User triggered test error", {
+      action: "test_error_endpoint",
+    });
+    throw new Error("My first Sentry error!");
+  }
 
   /**
    * Returns the an environment variable from config file

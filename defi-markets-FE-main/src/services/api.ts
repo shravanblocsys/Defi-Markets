@@ -14,9 +14,17 @@ import {
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 class ApiError extends Error {
-  constructor(message: string, public status: number, public code?: string) {
+  public originalMessage?: string | string[];
+
+  constructor(
+    message: string,
+    public status: number,
+    public code?: string,
+    originalMessage?: string | string[]
+  ) {
     super(message);
     this.name = "ApiError";
+    this.originalMessage = originalMessage;
   }
 }
 
@@ -49,10 +57,26 @@ async function apiRequest<T>(
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+
+      // Handle array messages (common in validation errors)
+      // Store original message array for proper formatting in components
+      const originalMessage = errorData.message;
+      let errorMessage: string;
+
+      if (Array.isArray(errorData.message)) {
+        // Join with line breaks for better formatting (components can use this)
+        errorMessage = errorData.message.join("\n");
+      } else if (errorData.message) {
+        errorMessage = errorData.message;
+      } else {
+        errorMessage = `HTTP error! status: ${response.status}`;
+      }
+
       throw new ApiError(
-        errorData.message || `HTTP error! status: ${response.status}`,
+        errorMessage,
         response.status,
-        errorData.code
+        errorData.code,
+        originalMessage
       );
     }
 

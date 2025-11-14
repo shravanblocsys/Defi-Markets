@@ -46,11 +46,14 @@ export class ConfigService {
         WEBTOKEN_SECRET_KEY: joi.string().required(),
         WEBTOKEN_EXPIRATION_TIME: joi.number().default(1800),
         DB_URL: joi.string().regex(/^mongodb/),
+        // Sentry
+        SENTRY_DSN: joi.string().uri().optional(),
         SOLANA_NETWORK: joi
           .string()
           .valid("devnet", "testnet", "mainnet-beta")
           .default("devnet"),
         SOLANA_RPC_URL: joi.string().uri().optional(),
+        HELIUS_RPC_URL: joi.string().uri().optional(),
         WALLET_CONNECT_PROJECT_ID: joi.string().optional(),
         HELIUS_API_KEY: joi.string().optional(),
         HELIUS_WEBHOOK_SECRET: joi.string().required(),
@@ -58,7 +61,9 @@ export class ConfigService {
         SOLANA_ADMIN_PRIVATE_KEY: joi.string().optional(),
         // External APIs
         JUPITER_API_BASE_URL: joi.string().uri().optional(),
-
+        JUPITER_API_KEY: joi.string().optional(),
+        JUPITER_QUOTE_API: joi.string().uri().optional(),
+        JUPITER_SWAP_API: joi.string().uri().optional(),
         // S3/MinIO Configuration
         MINIO_ENDPOINT: joi.string().optional(),
         MINIO_ACCESS_KEY: joi.string().optional(),

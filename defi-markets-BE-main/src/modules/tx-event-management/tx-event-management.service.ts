@@ -56,7 +56,9 @@ export class TxEventManagementService {
 
       // Check if it's Token-2022 program
       if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
-        this.logger.log(`Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`);
+        this.logger.log(
+          `Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`
+        );
         return TOKEN_2022_PROGRAM_ID;
       }
 
@@ -97,11 +99,21 @@ export class TxEventManagementService {
     private readonly redisService: RedisService
   ) {
     // Initialize Solana connection to the configured network
-    // You can configure this via environment variables
-    this.connection = new Connection(
-      this.configService.get("SOLANA_RPC_URL"),
-      "confirmed"
-    );
+    // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
+    const heliusRpcUrl = this.configService.get("HELIUS_RPC_URL");
+    const solanaRpcUrl = this.configService.get("SOLANA_RPC_URL");
+    const rpcUrl =
+      heliusRpcUrl || solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+
+    if (heliusRpcUrl) {
+      this.logger.log(`[DEBUG] Using Helius RPC URL: ${heliusRpcUrl}`);
+    } else if (solanaRpcUrl) {
+      this.logger.log(`[DEBUG] Using Solana RPC URL: ${solanaRpcUrl}`);
+    } else {
+      this.logger.log(`[DEBUG] Using default Solana RPC URL: ${rpcUrl}`);
+    }
+
+    this.connection = new Connection(rpcUrl, "confirmed");
   }
 
   /**
@@ -123,14 +135,29 @@ export class TxEventManagementService {
     const JUPITER_SWAP_API =
       this.configService.get("JUPITER_SWAP_API") ||
       "https://lite-api.jup.ag/swap/v1/swap-instructions";
+    const JUPITER_API_KEY = this.configService.get("JUPITER_API_KEY");
 
     this.logger.log(
       `[DEBUG] Jupiter APIs - Quote: ${JUPITER_QUOTE_API}, Swap: ${JUPITER_SWAP_API}`
     );
+    if (JUPITER_API_KEY) {
+      this.logger.log(`[DEBUG] Jupiter API key configured`);
+    }
 
+    // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
+    const heliusRpcUrl = this.configService.get("HELIUS_RPC_URL");
+    const solanaRpcUrl = this.configService.get("SOLANA_RPC_URL");
     const rpcUrl =
-      this.configService.get("SOLANA_RPC_URL") ||
-      "https://api.mainnet-beta.solana.com";
+      heliusRpcUrl || solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+
+    if (heliusRpcUrl) {
+      this.logger.log(`[DEBUG] Using Helius RPC URL: ${heliusRpcUrl}`);
+    } else if (solanaRpcUrl) {
+      this.logger.log(`[DEBUG] Using Solana RPC URL: ${solanaRpcUrl}`);
+    } else {
+      this.logger.log(`[DEBUG] Using default Solana RPC URL: ${rpcUrl}`);
+    }
+
     const connection = new Connection(rpcUrl, "processed");
 
     const adminKeyRaw = this.configService.get("SOLANA_ADMIN_PRIVATE_KEY");
@@ -177,7 +204,9 @@ export class TxEventManagementService {
           const baseDelay = 1000 * Math.pow(2, i);
           const jitter = Math.random() * 1000;
           const delay = baseDelay + jitter;
-          this.logger.log(`[DEBUG] Waiting ${Math.round(delay)}ms before retry...`);
+          this.logger.log(
+            `[DEBUG] Waiting ${Math.round(delay)}ms before retry...`
+          );
           await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
@@ -190,9 +219,17 @@ export class TxEventManagementService {
       amount: bigint
     ) => {
       const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64`;
-      this.logger.log(`[DEBUG] Jupiter Quote URL: ${url}`);
+      this.logger.log(`[API CALL] 🌐 Jupiter Quote API: GET ${url}`);
 
-      const res = await fetch(url as any);
+      const headers: any = {};
+      if (JUPITER_API_KEY) {
+        headers["x-api-key"] = JUPITER_API_KEY;
+        this.logger.log(
+          `[API CALL] 🔑 Using Jupiter API key for authentication`
+        );
+      }
+
+      const res = await fetch(url as any, { headers });
       this.logger.log(
         `[DEBUG] Jupiter Quote Response Status: ${res.status} ${res.statusText}`
       );
@@ -250,17 +287,29 @@ export class TxEventManagementService {
         userPublicKey: userPublicKey.toBase58(),
         destinationTokenAccount: destinationTokenAccount.toBase58(),
       };
-      this.logger.log(`[DEBUG] Jupiter Instructions URL: ${JUPITER_SWAP_API}`);
       this.logger.log(
-        `[DEBUG] Jupiter Instructions Body:`,
+        `[API CALL] 🌐 Jupiter Instructions API: POST ${JUPITER_SWAP_API}`
+      );
+      this.logger.log(
+        `[API CALL] 📦 Request body:`,
         JSON.stringify(body, null, 2)
       );
+
+      const headers: any = {
+        "Content-Type": "application/json",
+      };
+      if (JUPITER_API_KEY) {
+        headers["x-api-key"] = JUPITER_API_KEY;
+        this.logger.log(
+          `[API CALL] 🔑 Using Jupiter API key for authentication`
+        );
+      }
 
       const res = await fetch(
         JUPITER_SWAP_API as any,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         } as any
       );
@@ -327,8 +376,14 @@ export class TxEventManagementService {
     const getAddressLookupTableAccounts = async (
       keys: string[]
     ): Promise<AddressLookupTableAccount[]> => {
+      this.logger.log(
+        `[API CALL] 🔗 Solana RPC: getMultipleAccountsInfo (${keys.length} address lookup table accounts)`
+      );
       const infos = await connection.getMultipleAccountsInfo(
         keys.map((k) => new PublicKey(k))
+      );
+      this.logger.log(
+        `[API CALL] ✅ Solana RPC: getMultipleAccountsInfo completed`
       );
       return infos.reduce((acc, accountInfo, idx) => {
         const addr = keys[idx];
@@ -406,7 +461,11 @@ export class TxEventManagementService {
       throw new BadRequestException("No underlying assets configured");
 
     // Read vault USDC balance and clamp the amount (amountInRaw is already net of entry fees)
+    this.logger.log(
+      `[API CALL] 🔗 Solana RPC: getAccount for vault USDC account ${vaultUSDCAccount.toBase58()}`
+    );
     const vaultUSDC = await getAccount(connection, vaultUSDCAccount);
+    this.logger.log(`[API CALL] ✅ Solana RPC: getAccount completed`);
     const totalUSDC = BigInt(vaultUSDC.amount.toString());
     if (totalUSDC === BigInt(0)) {
       return {
@@ -424,6 +483,26 @@ export class TxEventManagementService {
       `[DEBUG] Amount to use for swapping: ${amountToUse.toString()} (amountInRaw: ${requestedAmount.toString()}, available: ${totalUSDC.toString()})`
     );
 
+    // Check admin wallet SOL balance before executing swaps
+    const adminBalance = await connection.getBalance(adminWallet.publicKey);
+    const minRequiredSOL = 0.1; // Minimum 0.1 SOL for fees
+    const minRequiredLamports = minRequiredSOL * 1e9;
+
+    if (adminBalance < minRequiredLamports) {
+      throw new BadRequestException(
+        `Insufficient admin wallet SOL balance: ${(adminBalance / 1e9).toFixed(
+          4
+        )} SOL. ` +
+          `Minimum required: ${minRequiredSOL} SOL for transaction fees.`
+      );
+    }
+
+    this.logger.log(
+      `[DEBUG] Admin wallet SOL balance: ${(adminBalance / 1e9).toFixed(
+        4
+      )} SOL (sufficient for fees)`
+    );
+
     // Ensure admin USDC ATA
     const adminUSDC = await getAssociatedTokenAddress(
       STABLECOIN_MINT,
@@ -433,60 +512,363 @@ export class TxEventManagementService {
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
-    const results: any[] = [];
+    // Helper function to get compute unit config
+    const getComputeUnitConfig = (quote: any) => {
+      // Check if it's a complex swap (multiple hops, large amount)
+      const isComplexSwap =
+        quote.routePlan?.length > 2 ||
+        BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
 
-    for (let i = 0; i < underlying.length; i++) {
-      const { mint: assetMint, bps } = underlying[i];
-      const assetAmount = (amountToUse * BigInt(bps)) / BigInt(10000);
+      if (isComplexSwap) {
+        this.logger.log(`[DEBUG] Complex swap detected, using high CU limit`);
+        return {
+          units: 2_000_000, // 2M CU for complex swaps
+          microLamports: 1000, // Higher priority fee
+        };
+      } else {
+        this.logger.log(
+          `[DEBUG] Simple swap detected, using standard CU limit`
+        );
+        return {
+          units: 1_500_000, // 1.5M CU for simple swaps
+          microLamports: 500, // Lower priority fee
+        };
+      }
+    };
+
+    // Helper function to batch process items (delays are optional for paid APIs)
+    // Processes items sequentially within batches with optional delays
+    const batchProcess = async <T, R>(
+      items: T[],
+      batchSize: number,
+      delayBetweenItems: number,
+      delayBetweenBatches: number,
+      processor: (item: T) => Promise<R>
+    ): Promise<R[]> => {
+      const results: R[] = [];
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+        const totalBatches = Math.ceil(items.length / batchSize);
+        this.logger.log(
+          `[DEBUG] Processing batch ${batchNumber}/${totalBatches} (${batch.length} items)`
+        );
+
+        // Process items in batch sequentially with optional delays between them
+        const batchResults: R[] = [];
+        for (let j = 0; j < batch.length; j++) {
+          const item = batch[j];
+          this.logger.log(
+            `[DEBUG] Processing item ${j + 1}/${
+              batch.length
+            } in batch ${batchNumber}`
+          );
+          try {
+            const result = await processor(item);
+            batchResults.push(result);
+          } catch (error) {
+            this.logger.log(
+              `[DEBUG] Error processing item in batch: ${error.message}`
+            );
+            batchResults.push(null as R);
+          }
+
+          // Add delay between items within batch (except for the last item) if delay > 0
+          if (j < batch.length - 1 && delayBetweenItems > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, delayBetweenItems)
+            );
+          }
+        }
+
+        results.push(...batchResults);
+
+        // Wait before next batch (except for the last batch) if delay > 0
+        if (i + batchSize < items.length && delayBetweenBatches > 0) {
+          this.logger.log(
+            `[DEBUG] Waiting ${delayBetweenBatches}ms before next batch...`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenBatches)
+          );
+        }
+      }
+      return results;
+    };
+
+    // Step 1: Prepare all swap data with batched Jupiter API calls
+    // First, prepare non-Jupiter data (ATAs, token programs) in parallel
+    this.logger.log(
+      `[DEBUG] Preparing non-Jupiter data for ${underlying.length} assets in parallel`
+    );
+    const assetPreparations = await Promise.all(
+      underlying.map(async ({ mint: assetMint, bps }, index) => {
+        const assetAmount = (amountToUse * BigInt(bps)) / BigInt(10000);
+        this.logger.log(
+          `[DEBUG] Preparing asset ${index + 1}/${
+            underlying.length
+          }: ${assetMint.toBase58()}, bps: ${bps}, amount: ${assetAmount.toString()}`
+        );
+
+        if (assetAmount === BigInt(0)) {
+          this.logger.log(
+            `[DEBUG] Skipping asset ${assetMint.toBase58()} - amount is 0`
+          );
+          return null;
+        }
+
+        try {
+          const tokenProgramId = await this.getTokenProgramId(
+            connection,
+            assetMint
+          );
+
+          // Derive/create vault ATA for asset
+          const vaultAssetAccount = await getAssociatedTokenAddress(
+            assetMint,
+            vault,
+            true,
+            tokenProgramId,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          );
+          this.logger.log(
+            `[API CALL] 🔗 Solana RPC: getAccountInfo for vault asset account ${vaultAssetAccount.toBase58()}`
+          );
+          const vaultAssetInfo = await connection.getAccountInfo(
+            vaultAssetAccount
+          );
+          this.logger.log(`[API CALL] ✅ Solana RPC: getAccountInfo completed`);
+          if (!vaultAssetInfo) {
+            this.logger.log(
+              `Creating ATA for ${assetMint.toBase58()} with token program ${tokenProgramId.toBase58()}`
+            );
+            const createIx = createAssociatedTokenAccountInstruction(
+              adminWallet.publicKey,
+              vaultAssetAccount,
+              vault,
+              assetMint,
+              tokenProgramId,
+              ASSOCIATED_TOKEN_PROGRAM_ID
+            );
+            await provider.sendAndConfirm(
+              new (await import("@solana/web3.js")).Transaction().add(createIx),
+              []
+            );
+            this.logger.log(
+              `ATA created successfully for ${assetMint.toBase58()}`
+            );
+          }
+
+          return {
+            assetMint,
+            assetAmount,
+            vaultAssetAccount,
+            tokenProgramId,
+            index,
+          };
+        } catch (error) {
+          this.logger.log(
+            `[DEBUG] Failed to prepare asset ${assetMint.toBase58()}: ${
+              error.message
+            }. Skipping this asset.`
+          );
+          return null;
+        }
+      })
+    );
+
+    // Filter out null results
+    const validAssetPreparations = assetPreparations.filter((p) => p !== null);
+    this.logger.log(
+      `[DEBUG] Successfully prepared ${validAssetPreparations.length} assets out of ${underlying.length}`
+    );
+
+    if (validAssetPreparations.length === 0) {
+      return {
+        vaultIndex,
+        amountRequested: requestedAmount.toString(),
+        amountUsed: amountToUse.toString(),
+        vaultUsdcBalance: totalUSDC.toString(),
+        etfSharePriceRaw: etfSharePriceRaw,
+        swaps: [],
+        note: "No valid assets could be prepared.",
+      };
+    }
+
+    // Validate total amount needed doesn't exceed vault balance
+    const totalAmountNeeded = validAssetPreparations.reduce(
+      (sum, prep) => sum + prep.assetAmount,
+      BigInt(0)
+    );
+
+    if (totalAmountNeeded > totalUSDC) {
       this.logger.log(
-        `[DEBUG] Processing asset ${i + 1}/${
-          underlying.length
-        }: ${assetMint.toBase58()}, bps: ${bps}, amount: ${assetAmount.toString()}`
+        `[WARNING] Total amount needed (${totalAmountNeeded.toString()}) exceeds vault balance (${totalUSDC.toString()}). ` +
+          `The transfer will be clamped to available balance.`
       );
+    } else {
+      this.logger.log(
+        `[DEBUG] Total amount validation: ${totalAmountNeeded.toString()} needed, ${totalUSDC.toString()} available (OK)`
+      );
+    }
 
-      if (assetAmount === BigInt(0)) {
+    // Step 1b: Batch Jupiter quote calls (paid API - no delays needed)
+    this.logger.log(
+      `[DEBUG] Getting Jupiter quotes for ${validAssetPreparations.length} assets in batches (max 10 per batch, no delays - paid API)`
+    );
+    const quoteResults = await batchProcess(
+      validAssetPreparations,
+      5, // Batch size: 10 quotes per batch (paid API allows higher concurrency)
+      0, // No delay between items (paid API)
+      0, // No delay between batches (paid API)
+      async (prep) => {
         this.logger.log(
-          `[DEBUG] Skipping asset ${assetMint.toBase58()} - amount is 0`
+          `[DEBUG] Getting Jupiter quote for ${STABLECOIN_MINT.toBase58()} -> ${prep.assetMint.toBase58()}, amount: ${prep.assetAmount.toString()}`
         );
-        continue;
+        try {
+          const quote = await retryWithBackoff(() =>
+            getJupiterQuote(STABLECOIN_MINT, prep.assetMint, prep.assetAmount)
+          );
+          return { ...prep, quote };
+        } catch (error) {
+          this.logger.log(
+            `[DEBUG] Failed to get quote for ${prep.assetMint.toBase58()}: ${
+              error.message
+            }`
+          );
+          return null;
+        }
       }
+    );
 
-      const tokenProgramId = await this.getTokenProgramId(
-        connection,
-        assetMint
-      );
+    // Filter out failed quotes
+    const validQuotes = quoteResults.filter((r) => r !== null);
+    this.logger.log(
+      `[DEBUG] Successfully got ${validQuotes.length} quotes out of ${validAssetPreparations.length}`
+    );
 
-      // Derive/create vault ATA for asset
-      const vaultAssetAccount = await getAssociatedTokenAddress(
-        assetMint,
-        vault,
-        true,
-        tokenProgramId,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
-      const vaultAssetInfo = await connection.getAccountInfo(vaultAssetAccount);
-      if (!vaultAssetInfo) {
+    if (validQuotes.length === 0) {
+      return {
+        vaultIndex,
+        amountRequested: requestedAmount.toString(),
+        amountUsed: amountToUse.toString(),
+        vaultUsdcBalance: totalUSDC.toString(),
+        etfSharePriceRaw: etfSharePriceRaw,
+        swaps: [],
+        note: "No valid quotes could be obtained.",
+      };
+    }
+
+    // Step 1c: Batch Jupiter instruction calls (paid API - no delays needed)
+    this.logger.log(
+      `[DEBUG] Getting Jupiter instructions for ${validQuotes.length} swaps in batches (max 10 per batch, no delays - paid API)`
+    );
+    const swapPreparations = await batchProcess(
+      validQuotes,
+      5, // Batch size: 5 instruction calls per batch (paid API allows higher concurrency)
+      0, // No delay between items (paid API)
+      0, // No delay between batches (paid API)
+      async (prep) => {
         this.logger.log(
-          `Creating ATA for ${assetMint.toBase58()} with token program ${tokenProgramId.toBase58()}`
+          `[DEBUG] Getting Jupiter instructions for swap ${prep.assetMint.toBase58()}`
         );
-        const createIx = createAssociatedTokenAccountInstruction(
-          adminWallet.publicKey,
-          vaultAssetAccount,
-          vault,
-          assetMint,
-          tokenProgramId,
-          ASSOCIATED_TOKEN_PROGRAM_ID
-        );
-        await provider.sendAndConfirm(
-          new (await import("@solana/web3.js")).Transaction().add(createIx),
-          []
-        );
-        this.logger.log(`ATA created successfully for ${assetMint.toBase58()}`);
+        try {
+          const instructions = await retryWithBackoff(() =>
+            getJupiterInstructions(
+              prep.quote,
+              adminWallet.publicKey,
+              prep.vaultAssetAccount
+            )
+          );
+          return {
+            assetMint: prep.assetMint,
+            assetAmount: prep.assetAmount,
+            vaultAssetAccount: prep.vaultAssetAccount,
+            quote: prep.quote,
+            instructions,
+            tokenProgramId: prep.tokenProgramId,
+            index: prep.index,
+          };
+        } catch (error) {
+          this.logger.log(
+            `[DEBUG] Failed to get instructions for ${prep.assetMint.toBase58()}: ${
+              error.message
+            }. Skipping this asset.`
+          );
+          return null;
+        }
       }
+    );
 
-      // Transfer USDC from vault to admin
-      const transferSig = await (program as any).methods
-        .transferVaultToUser(new BN(vaultIndex), new BN(assetAmount.toString()))
+    // Filter out null results (skipped assets)
+    const validPreparations = swapPreparations.filter((p) => p !== null);
+    this.logger.log(
+      `[DEBUG] Successfully prepared ${validPreparations.length} swaps out of ${underlying.length} assets`
+    );
+
+    if (validPreparations.length === 0) {
+      return {
+        vaultIndex,
+        amountRequested: requestedAmount.toString(),
+        amountUsed: amountToUse.toString(),
+        vaultUsdcBalance: totalUSDC.toString(),
+        etfSharePriceRaw: etfSharePriceRaw,
+        swaps: [],
+        note: "No valid swaps could be prepared.",
+      };
+    }
+
+    // Step 2: Execute SINGLE USDC transfer for total amount
+    // All USDC goes to the same admin wallet account, so we can transfer the total amount at once
+    // This eliminates race conditions and reduces transaction fees significantly
+    this.logger.log(
+      `[DEBUG] Executing single USDC transfer for total amount: ${amountToUse.toString()} (instead of ${
+        validPreparations.length
+      } separate transfers)`
+    );
+
+    // Calculate total amount needed from all valid preparations
+    const totalAssetAmounts = validPreparations.reduce(
+      (sum, prep) => sum + prep.assetAmount,
+      BigInt(0)
+    );
+
+    // Use the smaller of: amountToUse (requested) or totalAssetAmounts (sum of all asset amounts)
+    // This ensures we don't transfer more than needed
+    const transferAmount =
+      amountToUse < totalAssetAmounts ? amountToUse : totalAssetAmounts;
+
+    this.logger.log(
+      `[DEBUG] Transfer amount: ${transferAmount.toString()} (amountToUse: ${amountToUse.toString()}, totalAssetAmounts: ${totalAssetAmounts.toString()})`
+    );
+
+    // Re-check vault balance before transfer
+    this.logger.log(
+      `[API CALL] 🔗 Solana RPC: getAccount for vault USDC account (balance check before transfer)`
+    );
+    const currentVaultUSDC = await getAccount(connection, vaultUSDCAccount);
+    const currentBalance = BigInt(currentVaultUSDC.amount.toString());
+    this.logger.log(
+      `[API CALL] ✅ Solana RPC: getAccount completed - current balance: ${currentBalance.toString()}`
+    );
+
+    // Check if we have enough balance for the transfer
+    if (currentBalance < transferAmount) {
+      throw new BadRequestException(
+        `Insufficient vault balance: need ${transferAmount.toString()}, have ${currentBalance.toString()}`
+      );
+    }
+
+    let transferSig: string;
+    try {
+      this.logger.log(
+        `[API CALL] 🔗 Solana RPC: transferVaultToUser (program RPC call) for total amount: ${transferAmount.toString()}`
+      );
+      transferSig = await (program as any).methods
+        .transferVaultToUser(
+          new BN(vaultIndex),
+          new BN(transferAmount.toString())
+        )
         .accountsStrict({
           user: adminWallet.publicKey,
           factory,
@@ -497,74 +879,180 @@ export class TxEventManagementService {
           systemProgram: SystemProgram.programId,
         })
         .rpc();
-
-      // Jupiter swap USDC -> asset into vault's ATA
       this.logger.log(
-        `[DEBUG] Getting Jupiter quote for ${STABLECOIN_MINT.toBase58()} -> ${assetMint.toBase58()}, amount: ${assetAmount.toString()}`
+        `[API CALL] ✅ Solana RPC: transferVaultToUser completed - signature: ${transferSig}`
       );
-      let quote;
-      try {
-        quote = await retryWithBackoff(() =>
-          getJupiterQuote(STABLECOIN_MINT, assetMint, assetAmount)
-        );
-        this.logger.log(`[DEBUG] Jupiter quote received successfully`);
-      } catch (quoteError) {
-        this.logger.log(
-          `[DEBUG] Failed to get quote for ${assetMint.toBase58()}: ${
-            quoteError.message
-          }. Skipping this asset.`
-        );
-        continue; // Skip this asset if we can't get a quote
-      }
+      this.logger.log(
+        `[DEBUG] Single transfer successful. Transferred ${transferAmount.toString()} USDC. Remaining vault balance: ${(
+          currentBalance - transferAmount
+        ).toString()}`
+      );
+    } catch (error: any) {
+      const errorMessage = error.message || "Unknown error";
+      this.logger.log(`[DEBUG] USDC transfer failed: ${errorMessage}`);
+      throw new BadRequestException(
+        `Failed to transfer USDC from vault: ${errorMessage}`
+      );
+    }
 
-      this.logger.log(`[DEBUG] Getting Jupiter instructions for swap`);
-      let instructions;
-      try {
-        instructions = await retryWithBackoff(() =>
-          getJupiterInstructions(
-            quote,
-            adminWallet.publicKey,
-            vaultAssetAccount
-          )
-        );
-        this.logger.log(`[DEBUG] Jupiter instructions received successfully`);
-      } catch (instructionsError) {
-        this.logger.log(
-          `[DEBUG] Failed to get instructions for ${assetMint.toBase58()}: ${
-            instructionsError.message
-          }. Skipping this asset.`
-        );
-        continue; // Skip this asset if we can't get instructions
-      }
+    // Map all valid preparations to successfulTransfers with the same transfer signature
+    // All swaps will use the same transfer since all USDC went to the same admin wallet account
+    const successfulTransfers = validPreparations.map((prep) => ({
+      ...prep,
+      transferSig, // All swaps share the same transfer signature
+    }));
 
+    this.logger.log(
+      `[DEBUG] Successfully executed single USDC transfer. All ${successfulTransfers.length} swaps will use this transfer.`
+    );
+
+    if (successfulTransfers.length === 0) {
+      return {
+        vaultIndex,
+        amountRequested: requestedAmount.toString(),
+        amountUsed: amountToUse.toString(),
+        vaultUsdcBalance: totalUSDC.toString(),
+        etfSharePriceRaw: etfSharePriceRaw,
+        swaps: [],
+        note: "No USDC transfers could be completed.",
+      };
+    }
+
+    // Step 3: Build swap transactions in batches (paid Helius RPC - no delays needed)
+    this.logger.log(
+      `[DEBUG] Building ${successfulTransfers.length} swap transactions in batches (max 10 per batch, no delays - paid Helius RPC)`
+    );
+    this.logger.log(`[API CALL] 🔗 Solana RPC: getLatestBlockhash`);
+    const { blockhash } = await connection.getLatestBlockhash();
+    this.logger.log(
+      `[API CALL] ✅ Solana RPC: getLatestBlockhash completed - blockhash: ${blockhash}`
+    );
+
+    const swapTransactions = await batchProcess(
+      successfulTransfers,
+      5, // Batch size: 5 builds per batch (paid Helius RPC allows higher concurrency)
+      0, // No delay between items (paid RPC)
+      0, // No delay between batches (paid RPC)
+      async (prep) => {
+        // Refresh quote and instructions right before building to avoid stale quotes
+        // Jupiter quotes expire quickly (10-30 seconds), so we need fresh ones
+        this.logger.log(
+          `[DEBUG] Refreshing quote and instructions for ${prep.assetMint.toBase58()} before building transaction`
+        );
+        let freshQuote;
+        let freshInstructions;
+        try {
+          // Get fresh quote
+          freshQuote = await retryWithBackoff(() =>
+            getJupiterQuote(STABLECOIN_MINT, prep.assetMint, prep.assetAmount)
+          );
+          // Get fresh instructions with fresh quote
+          freshInstructions = await retryWithBackoff(() =>
+            getJupiterInstructions(
+              freshQuote,
+              adminWallet.publicKey,
+              prep.vaultAssetAccount
+            )
+          );
+        } catch (refreshError) {
+          this.logger.log(
+            `[DEBUG] Failed to refresh quote/instructions for ${prep.assetMint.toBase58()}: ${
+              refreshError.message
+            }. Using cached quote/instructions.`
+          );
+          // Fallback to cached quote/instructions if refresh fails
+          freshQuote = prep.quote;
+          freshInstructions = prep.instructions;
+        }
+
+        const swapInstruction = deserializeInstruction(
+          freshInstructions.swapInstruction
+        );
+        const swapIxs: any[] = [];
+
+        const cuConfig = getComputeUnitConfig(freshQuote);
+        swapIxs.push(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: cuConfig.units })
+        );
+        swapIxs.push(
+          ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: cuConfig.microLamports,
+          })
+        );
+
+        if (freshInstructions.setupInstructions?.length)
+          freshInstructions.setupInstructions.forEach((ix: any) =>
+            swapIxs.push(deserializeInstruction(ix))
+          );
+        swapIxs.push(
+          new TransactionInstruction({
+            programId: swapInstruction.programId,
+            keys: swapInstruction.keys,
+            data: swapInstruction.data,
+          })
+        );
+        if (freshInstructions.cleanupInstruction)
+          swapIxs.push(
+            deserializeInstruction(freshInstructions.cleanupInstruction)
+          );
+
+        const alts: AddressLookupTableAccount[] = freshInstructions
+          .addressLookupTableAddresses?.length
+          ? await getAddressLookupTableAccounts(
+              freshInstructions.addressLookupTableAddresses
+            )
+          : [];
+
+        this.logger.log(
+          `[DEBUG] Building transaction for ${prep.assetMint.toBase58()} with ${
+            swapIxs.length
+          } instructions (using fresh quote)`
+        );
+
+        const messageV0 = new TransactionMessage({
+          payerKey: adminWallet.publicKey,
+          recentBlockhash: blockhash,
+          instructions: swapIxs,
+        }).compileToV0Message(alts);
+        const vtx = new VersionedTransaction(messageV0);
+        const signed = await adminWallet.signTransaction(vtx);
+
+        return { ...prep, signedTransaction: signed, quote: freshQuote };
+      }
+    );
+
+    // Helper function to rebuild transaction with fresh blockhash and quote
+    const rebuildTransaction = async (
+      prep: any
+    ): Promise<VersionedTransaction> => {
+      this.logger.log(
+        `[DEBUG] Rebuilding transaction for ${prep.assetMint.toBase58()} with fresh blockhash and quote`
+      );
+
+      // Get fresh quote
+      const freshQuote = await retryWithBackoff(() =>
+        getJupiterQuote(STABLECOIN_MINT, prep.assetMint, prep.assetAmount)
+      );
+
+      // Get fresh instructions
+      const freshInstructions = await retryWithBackoff(() =>
+        getJupiterInstructions(
+          freshQuote,
+          adminWallet.publicKey,
+          prep.vaultAssetAccount
+        )
+      );
+
+      // Get fresh blockhash
+      const { blockhash: newBlockhash } = await connection.getLatestBlockhash();
+
+      // Rebuild transaction
       const swapInstruction = deserializeInstruction(
-        instructions.swapInstruction
+        freshInstructions.swapInstruction
       );
       const swapIxs: any[] = [];
 
-      // Add dynamic compute unit limits based on swap complexity
-      const getComputeUnitConfig = (quote: any) => {
-        // Check if it's a complex swap (multiple hops, large amount)
-        const isComplexSwap =
-          quote.routePlan?.length > 2 ||
-          BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
-
-        if (isComplexSwap) {
-          this.logger.log(`[DEBUG] Complex swap detected, using high CU limit`);
-          return {
-            units: 2_000_000, // 2M CU for complex swaps
-            microLamports: 1000, // Higher priority fee
-          };
-        } else {
-          this.logger.log(`[DEBUG] Simple swap detected, using standard CU limit`);
-          return {
-            units: 1_500_000, // 1.5M CU for simple swaps
-            microLamports: 500, // Lower priority fee
-          };
-        }
-      };
-
-      const cuConfig = getComputeUnitConfig(quote);
+      const cuConfig = getComputeUnitConfig(freshQuote);
       swapIxs.push(
         ComputeBudgetProgram.setComputeUnitLimit({ units: cuConfig.units })
       );
@@ -574,12 +1062,10 @@ export class TxEventManagementService {
         })
       );
 
-      if (instructions.setupInstructions?.length)
-        instructions.setupInstructions.forEach((ix: any) =>
+      if (freshInstructions.setupInstructions?.length)
+        freshInstructions.setupInstructions.forEach((ix: any) =>
           swapIxs.push(deserializeInstruction(ix))
         );
-      // Skip Jupiter's computeBudgetInstructions to avoid duplicates
-      // if (instructions.computeBudgetInstructions?.length) instructions.computeBudgetInstructions.forEach((ix: any) => swapIxs.push(deserializeInstruction(ix)));
       swapIxs.push(
         new TransactionInstruction({
           programId: swapInstruction.programId,
@@ -587,100 +1073,316 @@ export class TxEventManagementService {
           data: swapInstruction.data,
         })
       );
-      if (instructions.cleanupInstruction)
-        swapIxs.push(deserializeInstruction(instructions.cleanupInstruction));
+      if (freshInstructions.cleanupInstruction)
+        swapIxs.push(
+          deserializeInstruction(freshInstructions.cleanupInstruction)
+        );
 
-      const alts: AddressLookupTableAccount[] = instructions
+      const alts: AddressLookupTableAccount[] = freshInstructions
         .addressLookupTableAddresses?.length
         ? await getAddressLookupTableAccounts(
-            instructions.addressLookupTableAddresses
+            freshInstructions.addressLookupTableAddresses
           )
         : [];
 
-      this.logger.log(
-        `[DEBUG] Building transaction for ${assetMint.toBase58()} with ${
-          swapIxs.length
-        } instructions`
-      );
-
-      const blockhash = (await connection.getLatestBlockhash()).blockhash;
       const messageV0 = new TransactionMessage({
         payerKey: adminWallet.publicKey,
-        recentBlockhash: blockhash,
+        recentBlockhash: newBlockhash,
         instructions: swapIxs,
       }).compileToV0Message(alts);
       const vtx = new VersionedTransaction(messageV0);
       const signed = await adminWallet.signTransaction(vtx);
 
-      this.logger.log(
-        `[DEBUG] Sending swap transaction for ${assetMint.toBase58()}`
-      );
-      const sig = await retryWithBackoff(
-        () =>
-          connection.sendRawTransaction(signed.serialize(), {
-            skipPreflight: false,
-            preflightCommitment: "processed",
-          }),
-        5
-      );
-      this.logger.log(`[DEBUG] Swap transaction sent: ${sig}`);
+      return signed;
+    };
 
-      this.logger.log(
-        `[DEBUG] Confirming swap transaction for ${assetMint.toBase58()}`
-      );
-      await retryWithBackoff(
-        () => connection.confirmTransaction(sig, "processed"),
-        3
-      );
-      this.logger.log(`[DEBUG] Swap transaction confirmed: ${sig}`);
-
-      // Create history record for swap per asset (admin as performer if available)
-      try {
-        const adminProfile = await this.vaultDepositService[
-          "profileService"
-        ].getByWalletAddress(adminWallet.publicKey.toBase58());
-        const vaultFactory = await this.vaultFactoryService.findByAddress(
-          vault.toBase58()
-        );
-        if (adminProfile && vaultFactory) {
-          await this.historyService.createTransactionHistory(
-            "swap_completed",
-            `Swap completed: ${assetAmount.toString()} USDC -> ${assetMint.toBase58()} for vault index ${vaultIndex}`,
-            adminProfile._id.toString(),
-            vaultFactory._id.toString(),
-            {
-              vaultIndex,
-              vaultAddress: vault.toBase58(),
-              assetMint: assetMint.toBase58(),
-              usdcPortion: assetAmount.toString(),
-              transferSig,
-              swapSig: sig,
-            },
-            sig
-          );
-        }
-      } catch (historyError) {
-        this.logger.log(`Failed to create swap history: ${historyError.message}`);
-      }
-
-      results.push({
-        assetMint: assetMint.toBase58(),
-        usdcPortion: assetAmount.toString(),
-        transferSig,
-        swapSig: sig,
-      });
-
-      // Add delay between assets to avoid rate limiting
-      if (i < underlying.length - 1) {
-        const delay = 2000 + Math.random() * 1000; // 2-3 seconds
+    // Step 4: Send swap transactions in batches (paid Helius RPC - no delays needed)
+    this.logger.log(
+      `[DEBUG] Sending ${swapTransactions.length} swap transactions in batches (max 10 per batch, no delays - paid Helius RPC)`
+    );
+    const sentTransactionResults = await batchProcess(
+      swapTransactions,
+      5, // Batch size: 5 sends per batch (paid Helius RPC allows higher concurrency)
+      0, // No delay between items (paid RPC)
+      0, // No delay between batches (paid RPC)
+      async (prep) => {
+        const { signedTransaction, assetMint } = prep;
         this.logger.log(
-          `[DEBUG] Waiting ${Math.round(
-            delay
-          )}ms before processing next asset...`
+          `[DEBUG] Sending swap transaction for ${assetMint.toBase58()}`
         );
-        await new Promise((resolve) => setTimeout(resolve, delay));
+
+        const sendWithRetry = async (
+          attemptNumber: number = 1
+        ): Promise<string> => {
+          // Get fresh quote and blockhash right before sending to minimize expiration window
+          let transactionToSend = signedTransaction;
+          let shouldSkipPreflight = false;
+
+          // If this is a retry (attempt > 1) or first attempt, rebuild with fresh data
+          // This ensures we always have the freshest possible quote
+          if (attemptNumber > 1) {
+            this.logger.log(
+              `[DEBUG] Retry attempt ${attemptNumber} for ${assetMint.toBase58()}, rebuilding with fresh blockhash and quote`
+            );
+            transactionToSend = await rebuildTransaction(prep);
+            shouldSkipPreflight = true; // Skip preflight on retries to avoid quote expiration during simulation
+          }
+
+          try {
+            this.logger.log(
+              `[API CALL] 🔗 Solana RPC: sendRawTransaction for ${assetMint.toBase58()} (attempt ${attemptNumber}, skipPreflight: ${shouldSkipPreflight})`
+            );
+            return await connection.sendRawTransaction(
+              transactionToSend.serialize(),
+              {
+                skipPreflight: shouldSkipPreflight,
+                preflightCommitment: "processed",
+              }
+            );
+          } catch (error: any) {
+            const errorMessage = error.message || "Unknown error";
+
+            // Check if blockhash expired or Jupiter quote expired
+            if (
+              errorMessage.includes("Blockhash not found") ||
+              errorMessage.includes("blockhash") ||
+              errorMessage.includes("0x1788") ||
+              errorMessage.includes("6024")
+            ) {
+              // If we haven't rebuilt yet, rebuild now
+              if (attemptNumber === 1) {
+                this.logger.log(
+                  `[DEBUG] Transaction expired for ${assetMint.toBase58()} (${errorMessage}), rebuilding with fresh blockhash and quote`
+                );
+                const freshTransaction = await rebuildTransaction(prep);
+
+                // Retry immediately with fresh transaction (skip preflight)
+                this.logger.log(
+                  `[DEBUG] Retrying send for ${assetMint.toBase58()} with fresh transaction (skipping preflight)`
+                );
+                return await connection.sendRawTransaction(
+                  freshTransaction.serialize(),
+                  {
+                    skipPreflight: true, // Skip preflight to avoid quote expiration during simulation
+                    preflightCommitment: "processed",
+                  }
+                );
+              }
+              // If we already rebuilt and it still fails, throw to let retryWithBackoff handle it
+              throw error;
+            }
+            throw error;
+          }
+        };
+
+        try {
+          // Use a custom retry that rebuilds on each attempt
+          let lastError: any;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const sig = await sendWithRetry(attempt);
+              this.logger.log(
+                `[API CALL] ✅ Solana RPC: sendRawTransaction completed - signature: ${sig}`
+              );
+              return { success: true, sig, assetMint };
+            } catch (error: any) {
+              lastError = error;
+              if (attempt < 3) {
+                const baseDelay = 1000 * Math.pow(2, attempt - 1);
+                const jitter = Math.random() * 1000;
+                const delay = baseDelay + jitter;
+                this.logger.log(
+                  `[DEBUG] Waiting ${Math.round(delay)}ms before retry...`
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+              }
+            }
+          }
+          throw lastError;
+        } catch (error: any) {
+          // Enhanced error logging for Jupiter errors
+          let errorMessage = error.message || "Unknown error";
+          let errorDetails = "";
+
+          // Check if it's a SendTransactionError and get logs
+          if (error && typeof error.getLogs === "function") {
+            try {
+              const logs = error.getLogs();
+              if (logs && Array.isArray(logs)) {
+                errorDetails = `\nTransaction Logs:\n${logs.join("\n")}`;
+              }
+            } catch (logError) {
+              // Fallback to error.logs if getLogs() fails
+              if (error.logs && Array.isArray(error.logs)) {
+                errorDetails = `\nTransaction Logs:\n${error.logs.join("\n")}`;
+              }
+            }
+          } else if (error.logs && Array.isArray(error.logs)) {
+            // Fallback: check if logs are directly on error object
+            errorDetails = `\nTransaction Logs:\n${error.logs.join("\n")}`;
+          }
+
+          // Check for Jupiter-specific errors
+          if (
+            errorMessage.includes("0x1788") ||
+            errorMessage.includes("6024")
+          ) {
+            errorMessage = `Jupiter swap error 0x1788: Quote may have expired or route is invalid. ${errorMessage}`;
+          }
+
+          this.logger.log(
+            `[DEBUG] Failed to send swap transaction for ${assetMint.toBase58()}: ${errorMessage}${errorDetails}`
+          );
+          return {
+            success: false,
+            error: errorMessage,
+            assetMint,
+            errorDetails,
+          };
+        }
       }
-    }
+    );
+
+    // Convert to Promise.allSettled format for compatibility
+    const sentTransactions = sentTransactionResults.map((result) => {
+      if (result && result.success) {
+        return { status: "fulfilled" as const, value: result.sig };
+      } else {
+        return {
+          status: "rejected" as const,
+          reason: { message: result?.error || "Unknown error" },
+        };
+      }
+    });
+
+    // Step 5: Wait for confirmations in batches to avoid RPC rate limits
+    // Prepare confirmation data first
+    const confirmationData = sentTransactions.map((result, idx) => ({
+      result,
+      prep: swapTransactions[idx],
+    }));
+
+    // Filter out failed sends (they don't need confirmation)
+    const confirmationsToProcess = confirmationData.filter(
+      (item) => item.result.status === "fulfilled"
+    );
+    const failedSends = confirmationData.filter(
+      (item) => item.result.status === "rejected"
+    );
+
+    // Log failed sends first
+    const results: any[] = [];
+    failedSends.forEach(({ prep, result }) => {
+      this.logger.log(
+        `[DEBUG] Failed to send swap transaction for ${prep.assetMint.toBase58()}: ${
+          result.reason?.message || "Unknown error"
+        }`
+      );
+      results.push({
+        assetMint: prep.assetMint.toBase58(),
+        usdcPortion: prep.assetAmount.toString(),
+        transferSig: prep.transferSig,
+        error: result.reason?.message || "Failed to send transaction",
+      });
+    });
+
+    // Confirm all transactions in parallel (paid Helius RPC - no delays needed)
+    this.logger.log(
+      `[DEBUG] Confirming ${confirmationsToProcess.length} swap transactions in parallel (paid Helius RPC)`
+    );
+    const confirmationResults = await Promise.allSettled(
+      confirmationsToProcess.map(async ({ result, prep }) => {
+        const sig = result.value;
+        try {
+          this.logger.log(
+            `[API CALL] 🔗 Solana RPC: confirmTransaction for ${prep.assetMint.toBase58()} - signature: ${sig}`
+          );
+          await retryWithBackoff(
+            () => connection.confirmTransaction(sig, "processed"),
+            3
+          );
+          this.logger.log(
+            `[API CALL] ✅ Solana RPC: confirmTransaction completed - signature: ${sig}`
+          );
+
+          // Create history record for swap per asset (admin as performer if available)
+          try {
+            const adminProfile = await this.vaultDepositService[
+              "profileService"
+            ].getByWalletAddress(adminWallet.publicKey.toBase58());
+            const vaultFactory = await this.vaultFactoryService.findByAddress(
+              vault.toBase58()
+            );
+            if (adminProfile && vaultFactory) {
+              await this.historyService.createTransactionHistory(
+                "swap_completed",
+                `Swap completed: ${prep.assetAmount.toString()} USDC -> ${prep.assetMint.toBase58()} for vault index ${vaultIndex}`,
+                adminProfile._id.toString(),
+                vaultFactory._id.toString(),
+                {
+                  vaultIndex,
+                  vaultAddress: vault.toBase58(),
+                  assetMint: prep.assetMint.toBase58(),
+                  usdcPortion: prep.assetAmount.toString(),
+                  transferSig: prep.transferSig,
+                  swapSig: sig,
+                },
+                sig
+              );
+            }
+          } catch (historyError) {
+            this.logger.log(
+              `Failed to create swap history: ${historyError.message}`
+            );
+          }
+
+          return {
+            assetMint: prep.assetMint.toBase58(),
+            usdcPortion: prep.assetAmount.toString(),
+            transferSig: prep.transferSig,
+            swapSig: sig,
+          };
+        } catch (confirmError) {
+          this.logger.log(
+            `[DEBUG] Failed to confirm swap transaction ${sig} for ${prep.assetMint.toBase58()}: ${
+              confirmError.message
+            }`
+          );
+          return {
+            assetMint: prep.assetMint.toBase58(),
+            usdcPortion: prep.assetAmount.toString(),
+            transferSig: prep.transferSig,
+            swapSig: sig,
+            error: confirmError.message,
+          };
+        }
+      })
+    );
+
+    // Process results from parallel confirmations
+    const confirmedSwaps = confirmationResults
+      .map((result, idx) => {
+        if (result.status === "fulfilled") {
+          return result.value;
+        } else {
+          const { prep } = confirmationsToProcess[idx];
+          this.logger.log(
+            `[DEBUG] Confirmation promise rejected for ${prep.assetMint.toBase58()}: ${
+              result.reason?.message || "Unknown error"
+            }`
+          );
+          return {
+            assetMint: prep.assetMint.toBase58(),
+            usdcPortion: prep.assetAmount.toString(),
+            transferSig: prep.transferSig,
+            error: result.reason?.message || "Confirmation promise rejected",
+          };
+        }
+      })
+      .filter((r) => r !== null);
+
+    // Add successful confirmations to results
+    results.push(...confirmedSwaps);
 
     await this.clearCache();
     return {
@@ -693,7 +1395,7 @@ export class TxEventManagementService {
     };
   }
 
-  /**  
+  /**
    * Admin redeem-swap: withdraw underlying to admin, swap to USDC into vault USDC PDA
    */
   async redeemSwapAdmin(dto: RedeemSwapAdminDto): Promise<any> {
@@ -709,10 +1411,22 @@ export class TxEventManagementService {
     const JUPITER_SWAP_API =
       this.configService.get("JUPITER_SWAP_API") ||
       "https://lite-api.jup.ag/swap/v1/swap-instructions";
+    const JUPITER_API_KEY = this.configService.get("JUPITER_API_KEY");
 
+    // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
+    const heliusRpcUrl = this.configService.get("HELIUS_RPC_URL");
+    const solanaRpcUrl = this.configService.get("SOLANA_RPC_URL");
     const rpcUrl =
-      this.configService.get("SOLANA_RPC_URL") ||
-      "https://api.mainnet-beta.solana.com";
+      heliusRpcUrl || solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+
+    if (heliusRpcUrl) {
+      this.logger.log(`[DEBUG] Using Helius RPC URL: ${heliusRpcUrl}`);
+    } else if (solanaRpcUrl) {
+      this.logger.log(`[DEBUG] Using Solana RPC URL: ${solanaRpcUrl}`);
+    } else {
+      this.logger.log(`[DEBUG] Using default Solana RPC URL: ${rpcUrl}`);
+    }
+
     const connection = new Connection(rpcUrl, "processed");
     this.logger.log(`🌐 Using RPC URL: ${rpcUrl}`);
     this.logger.log(`🔗 Connection commitment: processed`);
@@ -758,7 +1472,11 @@ export class TxEventManagementService {
       amount: bigint
     ) => {
       const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64`;
-      const res = await fetch(url as any);
+      const headers: any = {};
+      if (JUPITER_API_KEY) {
+        headers["x-api-key"] = JUPITER_API_KEY;
+      }
+      const res = await fetch(url as any, { headers });
 
       if (!res.ok) {
         throw new Error(
@@ -797,11 +1515,18 @@ export class TxEventManagementService {
         destinationTokenAccount: destinationTokenAccount.toBase58(),
       };
 
+      const headers: any = {
+        "Content-Type": "application/json",
+      };
+      if (JUPITER_API_KEY) {
+        headers["x-api-key"] = JUPITER_API_KEY;
+      }
+
       const res = await fetch(
         JUPITER_SWAP_API as any,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify(body),
         } as any
       );
@@ -893,7 +1618,9 @@ export class TxEventManagementService {
     });
 
     // Fetch vault account and underlying
-    this.logger.log(`\n🔍 Fetching vault account for vault: ${vault.toBase58()}`);
+    this.logger.log(
+      `\n🔍 Fetching vault account for vault: ${vault.toBase58()}`
+    );
     const vaultAccount: any = await (program as any).account.vault.fetch(vault);
     this.logger.log(
       `📋 Raw vault account data:`,
@@ -975,7 +1702,13 @@ export class TxEventManagementService {
           this.logger.log(`    Token Account: ${tokenAccount.toBase58()}`);
           this.logger.log(`    Token Program: ${assetTokenProgram.toBase58()}`);
 
-          const accountInfo = await getAccount(connection, tokenAccount);
+          // Pass token program ID to getAccount - required for TOKEN_2022 accounts
+          const accountInfo = await getAccount(
+            connection,
+            tokenAccount,
+            undefined,
+            assetTokenProgram
+          );
           balance = BigInt(accountInfo.amount.toString());
           decimals = await getTokenDecimals(mintAddress);
 
@@ -985,7 +1718,9 @@ export class TxEventManagementService {
             ).toFixed(6)} tokens)`
           );
         } catch (e) {
-          this.logger.log(`    Balance: Account not found or error - ${e.message}`);
+          this.logger.log(
+            `    Balance: Account not found or error - ${e.message}`
+          );
         }
 
         underlying.push({
@@ -1050,6 +1785,91 @@ export class TxEventManagementService {
 
     const results: any[] = [];
 
+    // Helper function to batch process items (delays are optional for paid APIs)
+    const batchProcess = async <T, R>(
+      items: T[],
+      batchSize: number,
+      delayBetweenItems: number,
+      delayBetweenBatches: number,
+      processor: (item: T) => Promise<R>
+    ): Promise<R[]> => {
+      const results: R[] = [];
+      for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const batchNumber = Math.floor(i / batchSize) + 1;
+        const totalBatches = Math.ceil(items.length / batchSize);
+        this.logger.log(
+          `[DEBUG] Processing batch ${batchNumber}/${totalBatches} (${batch.length} items)`
+        );
+
+        // Process items in batch sequentially with optional delays between them
+        const batchResults: R[] = [];
+        for (let j = 0; j < batch.length; j++) {
+          const item = batch[j];
+          this.logger.log(
+            `[DEBUG] Processing item ${j + 1}/${
+              batch.length
+            } in batch ${batchNumber}`
+          );
+          try {
+            const result = await processor(item);
+            batchResults.push(result);
+          } catch (error) {
+            this.logger.log(
+              `[DEBUG] Error processing item in batch: ${error.message}`
+            );
+            batchResults.push(null as R);
+          }
+
+          // Add delay between items within batch (except for the last item) if delay > 0
+          if (j < batch.length - 1 && delayBetweenItems > 0) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, delayBetweenItems)
+            );
+          }
+        }
+
+        results.push(...batchResults);
+
+        // Wait before next batch (except for the last batch) if delay > 0
+        if (i + batchSize < items.length && delayBetweenBatches > 0) {
+          this.logger.log(
+            `[DEBUG] Waiting ${delayBetweenBatches}ms before next batch...`
+          );
+          await new Promise((resolve) =>
+            setTimeout(resolve, delayBetweenBatches)
+          );
+        }
+      }
+      return results;
+    };
+
+    // Helper function to get compute unit config
+    const getComputeUnitConfig = (quote: any) => {
+      // Check if it's a complex swap (multiple hops, large amount)
+      const isComplexSwap =
+        quote.routePlan?.length > 2 ||
+        BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
+
+      if (isComplexSwap) {
+        this.logger.log(
+          `[redeemSwapAdmin] Complex swap detected, using high CU limit`
+        );
+        return {
+          units: 2_000_000, // 2M CU for complex swaps
+          microLamports: 1000, // Higher priority fee
+        };
+      } else {
+        this.logger.log(
+          `[redeemSwapAdmin] Simple swap detected, using standard CU limit`
+        );
+        return {
+          units: 1_500_000, // 1.5M CU for simple swaps
+          microLamports: 500, // Lower priority fee
+        };
+      }
+    };
+
     // Price-based calculation: Calculate USD value and split by real-time prices
     const requestedShares = BigInt(vaultTokenAmount);
     const totalAssets: bigint = BigInt(
@@ -1085,7 +1905,9 @@ export class TxEventManagementService {
         sharePriceUSD: sharePriceUSD.toFixed(6),
         totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
         totalValueUSDActual: totalValueUSDActual.toFixed(6),
-        calculation: `(${requestedShares.toString()} shares × ${sharePriceUSD.toFixed(6)} USDC/share) = ${totalValueUSDActual.toFixed(6)} USDC`,
+        calculation: `(${requestedShares.toString()} shares × ${sharePriceUSD.toFixed(
+          6
+        )} USDC/share) = ${totalValueUSDActual.toFixed(6)} USDC`,
         note: "Using FULL amount - smart contract will deduct fees later",
       }
     );
@@ -1094,7 +1916,13 @@ export class TxEventManagementService {
     const getAssetPriceUSD = async (assetMint: PublicKey): Promise<bigint> => {
       try {
         const priceUrl = `https://lite-api.jup.ag/price/v3?ids=${assetMint.toBase58()}`;
-        const response = await retryWithBackoff(() => fetch(priceUrl));
+        const headers: any = {};
+        if (JUPITER_API_KEY) {
+          headers["x-api-key"] = JUPITER_API_KEY;
+        }
+        const response = await retryWithBackoff(() =>
+          fetch(priceUrl, { headers })
+        );
 
         if (!response.ok) {
           throw new Error(
@@ -1120,198 +1948,373 @@ export class TxEventManagementService {
       }
     };
 
-    for (let i = 0; i < underlying.length; i++) {
-      const asset = underlying[i];
-      const assetTokenProgram = await this.getTokenProgramId(
-        connection,
-        asset.mint
-      );
-      const vaultAsset = await getAssociatedTokenAddress(
-        asset.mint,
-        vault,
-        true,
-        assetTokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
-
-      // Use the accurate balance from vault reading (already includes decimals handling)
-      const vaultAssetAmount = asset.balance;
-      if (vaultAssetAmount === BigInt(0)) continue;
-
-      // Calculate USD allocation for this asset based on allocation percentage
-      // Using FULL input amount - no fee deduction here!
-      // totalValueUSDCrawNumber is in raw USDC units (6 decimals), so allocation is also in raw units
-      const assetUSDAllocation = Math.floor(
-        (totalValueUSDCrawNumber * asset.bps) / 10000
-      );
-      const assetUSDAllocationActual = assetUSDAllocation / 1_000_000; // actual USD value
-
-      this.logger.log(`[redeemSwapAdmin] Asset ${i} allocation calculation:`, {
-        assetMint: asset.mint.toBase58(),
-        bps: asset.bps,
-        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
-        totalValueUSDActual: totalValueUSDActual.toFixed(6),
-        assetUSDAllocationRaw: assetUSDAllocation.toString(),
-        assetUSDAllocationActual: assetUSDAllocationActual.toFixed(6),
-        calculation: `(${totalValueUSDCrawNumber.toString()} raw USDC × ${asset.bps} bps) / 10000 = ${assetUSDAllocation.toString()} raw USDC (${assetUSDAllocationActual.toFixed(6)} USDC)`,
-        note: "Using FULL input amount for allocation - share price IS being used",
-      });
-
-      // Get real-time price for this asset (price per 1 token in USDC)
-      const assetPriceUSD = await getAssetPriceUSD(asset.mint);
-      if (assetPriceUSD === BigInt(0)) {
-        this.logger.log(`Skipping ${asset.mint.toBase58()} - unable to get price`);
-        continue;
-      }
-
-      // Calculate token amount needed: USD allocation / price per token
-      // Note: assetPriceUSD is price for 1 token (with 6 decimals), so we need to adjust
-      // Use the actual decimals from vault reading for accurate calculation
-      const tokenAmountNeeded = Math.floor(
-        (assetUSDAllocation * Math.pow(10, asset.decimals)) /
-          Number(assetPriceUSD)
-      );
-
-      // Withdraw at most what's available in vault for this asset
-      const withdrawAmount =
-        BigInt(tokenAmountNeeded) > vaultAssetAmount
-          ? vaultAssetAmount
-          : BigInt(tokenAmountNeeded);
-      if (withdrawAmount === BigInt(0)) continue;
-
-      // For program compatibility, use targetByAllocation name but with price-based value
-      const targetByAllocation = withdrawAmount; // This is now the price-calculated amount
-
-      this.logger.log("[redeemSwapAdmin] asset leg (price-based)", {
-        assetMint: asset.mint.toBase58(),
-        vaultAssetAta: vaultAsset.toBase58(),
-        vaultAssetAmount: vaultAssetAmount.toString(),
-        vaultAssetAmountTokens: (
-          Number(vaultAssetAmount) / Math.pow(10, asset.decimals)
-        ).toFixed(6),
-        decimals: asset.decimals,
-        bps: asset.bps,
-        assetUSDAllocation: assetUSDAllocation.toString(),
-        assetPriceUSD: assetPriceUSD.toString(),
-        tokenAmountNeeded: tokenAmountNeeded.toString(),
-        tokenAmountNeededTokens: (
-          Number(tokenAmountNeeded) / Math.pow(10, asset.decimals)
-        ).toFixed(6),
-        vaultTokenAmountForWithdraw: targetByAllocation.toString(), // Full amount passed to withdrawUnderlyingToUser
-        withdrawAmount: withdrawAmount.toString(),
-        withdrawAmountTokens: (
-          Number(withdrawAmount) / Math.pow(10, asset.decimals)
-        ).toFixed(6),
-        note: "withdrawUnderlyingToUser uses FULL vaultTokenAmount, swap uses calculated withdrawAmount",
-      });
-
-      // Ensure admin ATA for this asset exists (owner = factory admin)
-      const adminAssetAta = await getAssociatedTokenAddress(
-        asset.mint,
-        factoryAdminPubkey,
-        false,
-        assetTokenProgram,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
-      const adminAssetInfo = await connection.getAccountInfo(adminAssetAta);
-      if (!adminAssetInfo) {
-        const createIx = createAssociatedTokenAccountInstruction(
-          adminWallet.publicKey,
-          adminAssetAta,
-          factoryAdminPubkey,
+    // Step 1: Prepare all assets in parallel
+    this.logger.log(
+      `[DEBUG] Preparing ${underlying.length} assets for redeem swap in parallel`
+    );
+    const assetPreparations = await Promise.all(
+      underlying.map(async (asset, index) => {
+        const assetTokenProgram = await this.getTokenProgramId(
+          connection,
+          asset.mint
+        );
+        const vaultAsset = await getAssociatedTokenAddress(
           asset.mint,
+          vault,
+          true,
           assetTokenProgram,
           ASSOCIATED_TOKEN_PROGRAM_ID
         );
-        const createTx = new (
-          await import("@solana/web3.js")
-        ).Transaction().add(createIx);
-        await provider.sendAndConfirm(createTx, []);
-      }
 
-      // Withdraw to admin using FULL vault token amount (1 USDC = 1,000,000)
-      // Smart contract will handle fee deduction during FinalizeRedeem
-      await (program as any).methods
-        .withdrawUnderlyingToUser(
-          new BN(vaultIndex),
-          new BN(targetByAllocation.toString())
-        )
-        .accountsStrict({
-          user: factoryAdminPubkey,
-          factory,
-          vault,
-          vaultAssetAccount: vaultAsset,
-          userAssetAccount: adminAssetAta,
-          tokenProgram: assetTokenProgram,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+        const vaultAssetAmount = asset.balance;
+        if (vaultAssetAmount === BigInt(0)) return null;
 
-      // Swap admin asset -> USDC into vault USDC PDA
-      let quote;
-      try {
-        quote = await retryWithBackoff(() =>
-          getJupiterQuote(asset.mint, STABLECOIN_MINT, targetByAllocation)
+        // Calculate USD allocation
+        const assetUSDAllocation = Math.floor(
+          (totalValueUSDCrawNumber * asset.bps) / 10000
         );
-        const outAmount =
-          quote && (quote.outAmount || quote.otherAmountThreshold)
-            ? quote.outAmount || quote.otherAmountThreshold
-            : undefined;
-        this.logger.log("[redeemSwapAdmin] quote", {
-          inputMint: asset.mint.toBase58(),
-          outAmount,
-        });
-      } catch (quoteError) {
-        this.logger.log(
-          `[redeemSwapAdmin] Failed to get quote for ${asset.mint.toBase58()}: ${
-            quoteError.message
-          }. Skipping this asset.`
-        );
-        continue; // Skip this asset if we can't get a quote
-      }
+        const assetUSDAllocationActual = assetUSDAllocation / 1_000_000;
 
-      let instructions;
-      try {
-        instructions = await retryWithBackoff(() =>
-          getJupiterInstructions(quote, factoryAdminPubkey, vaultUSDC)
-        );
-      } catch (instructionsError) {
-        this.logger.log(
-          `[redeemSwapAdmin] Failed to get instructions for ${asset.mint.toBase58()}: ${
-            instructionsError.message
-          }. Skipping this asset.`
-        );
-        continue; // Skip this asset if we can't get instructions
-      }
-      const swapIxs: TransactionInstruction[] = [];
-
-      // Add dynamic compute unit limits based on swap complexity
-      const getComputeUnitConfig = (quote: any) => {
-        // Check if it's a complex swap (multiple hops, large amount)
-        const isComplexSwap =
-          quote.routePlan?.length > 2 ||
-          BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
-
-        if (isComplexSwap) {
+        // Get real-time price
+        const assetPriceUSD = await getAssetPriceUSD(asset.mint);
+        if (assetPriceUSD === BigInt(0)) {
           this.logger.log(
-            `[redeemSwapAdmin] Complex swap detected, using high CU limit`
+            `Skipping ${asset.mint.toBase58()} - unable to get price`
           );
-          return {
-            units: 2_000_000, // 2M CU for complex swaps
-            microLamports: 1000, // Higher priority fee
-          };
+          return null;
+        }
+
+        // Calculate token amount needed
+        const tokenAmountNeeded = Math.floor(
+          (assetUSDAllocation * Math.pow(10, asset.decimals)) /
+            Number(assetPriceUSD)
+        );
+
+        const withdrawAmount =
+          BigInt(tokenAmountNeeded) > vaultAssetAmount
+            ? vaultAssetAmount
+            : BigInt(tokenAmountNeeded);
+        if (withdrawAmount === BigInt(0)) return null;
+
+        const adminAssetAta = await getAssociatedTokenAddress(
+          asset.mint,
+          factoryAdminPubkey,
+          false,
+          assetTokenProgram,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+
+        return {
+          asset,
+          assetTokenProgram,
+          vaultAsset,
+          adminAssetAta,
+          withdrawAmount,
+          assetPriceUSD,
+          assetUSDAllocation,
+          index,
+        };
+      })
+    );
+
+    const validPreparations = assetPreparations.filter((p) => p !== null);
+    this.logger.log(
+      `[DEBUG] Successfully prepared ${validPreparations.length} assets out of ${underlying.length}`
+    );
+
+    if (validPreparations.length === 0) {
+      return {
+        vaultIndex,
+        vaultTokenAmount,
+        swaps: [],
+        vaultUsdcBalance: "0",
+        requiredUsdc: "0",
+        adjustedVaultTokenAmount: "0",
+        sharePriceAfter: (Number(sharePriceRaw) / 1_000_000).toString(),
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        mode: "price-based",
+      };
+    }
+
+    // Step 2: Ensure all ATAs exist in parallel
+    this.logger.log(
+      `[DEBUG] Ensuring ${validPreparations.length} admin ATAs exist in parallel`
+    );
+    await Promise.allSettled(
+      validPreparations.map(async (prep) => {
+        const adminAssetInfo = await connection.getAccountInfo(
+          prep.adminAssetAta
+        );
+        if (!adminAssetInfo) {
+          const createIx = createAssociatedTokenAccountInstruction(
+            adminWallet.publicKey,
+            prep.adminAssetAta,
+            factoryAdminPubkey,
+            prep.asset.mint,
+            prep.assetTokenProgram,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          );
+          const createTx = new (
+            await import("@solana/web3.js")
+          ).Transaction().add(createIx);
+          await provider.sendAndConfirm(createTx, []);
+        }
+      })
+    );
+
+    // Step 3: Get all Jupiter quotes in parallel (batched)
+    this.logger.log(
+      `[DEBUG] Getting Jupiter quotes for ${validPreparations.length} assets in batches (max 5 per batch, no delays - paid API)`
+    );
+    const quoteResults = await batchProcess(
+      validPreparations,
+      5,
+      0,
+      0,
+      async (prep) => {
+        try {
+          const quote = await retryWithBackoff(() =>
+            getJupiterQuote(
+              prep.asset.mint,
+              STABLECOIN_MINT,
+              prep.withdrawAmount
+            )
+          );
+          return { ...prep, quote };
+        } catch (error) {
+          this.logger.log(
+            `[DEBUG] Failed to get quote for ${prep.asset.mint.toBase58()}: ${
+              error.message
+            }`
+          );
+          return null;
+        }
+      }
+    );
+
+    const validQuotes = quoteResults.filter((r) => r !== null);
+    this.logger.log(
+      `[DEBUG] Successfully got ${validQuotes.length} quotes out of ${validPreparations.length}`
+    );
+
+    if (validQuotes.length === 0) {
+      return {
+        vaultIndex,
+        vaultTokenAmount,
+        swaps: [],
+        vaultUsdcBalance: "0",
+        requiredUsdc: "0",
+        adjustedVaultTokenAmount: "0",
+        sharePriceAfter: (Number(sharePriceRaw) / 1_000_000).toString(),
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        mode: "price-based",
+      };
+    }
+
+    // Step 4: Get all Jupiter instructions in parallel (batched)
+    this.logger.log(
+      `[DEBUG] Getting Jupiter instructions for ${validQuotes.length} swaps in batches (max 5 per batch, no delays - paid API)`
+    );
+    const swapPreparations = await batchProcess(
+      validQuotes,
+      5,
+      0,
+      0,
+      async (prep) => {
+        try {
+          const instructions = await retryWithBackoff(() =>
+            getJupiterInstructions(prep.quote, factoryAdminPubkey, vaultUSDC)
+          );
+          return { ...prep, instructions };
+        } catch (error) {
+          this.logger.log(
+            `[DEBUG] Failed to get instructions for ${prep.asset.mint.toBase58()}: ${
+              error.message
+            }`
+          );
+          return null;
+        }
+      }
+    );
+
+    const validSwaps = swapPreparations.filter((p) => p !== null);
+    this.logger.log(
+      `[DEBUG] Successfully prepared ${validSwaps.length} swaps out of ${validPreparations.length} assets`
+    );
+
+    if (validSwaps.length === 0) {
+      return {
+        vaultIndex,
+        vaultTokenAmount,
+        swaps: [],
+        vaultUsdcBalance: "0",
+        requiredUsdc: "0",
+        adjustedVaultTokenAmount: "0",
+        sharePriceAfter: (Number(sharePriceRaw) / 1_000_000).toString(),
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        mode: "price-based",
+      };
+    }
+
+    // Step 5: Execute all withdrawals in parallel
+    this.logger.log(
+      `[DEBUG] Executing ${validSwaps.length} withdrawals in parallel`
+    );
+    const withdrawalResults = await Promise.allSettled(
+      validSwaps.map(async (prep) => {
+        return await (program as any).methods
+          .withdrawUnderlyingToUser(
+            new BN(vaultIndex),
+            new BN(prep.withdrawAmount.toString())
+          )
+          .accountsStrict({
+            user: factoryAdminPubkey,
+            factory,
+            vault,
+            vaultAssetAccount: prep.vaultAsset,
+            userAssetAccount: prep.adminAssetAta,
+            tokenProgram: prep.assetTokenProgram,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc();
+      })
+    );
+
+    const successfulWithdrawals = withdrawalResults
+      .map((result, idx) => {
+        if (result.status === "fulfilled") {
+          return { ...validSwaps[idx], withdrawSig: result.value };
         } else {
           this.logger.log(
-            `[redeemSwapAdmin] Simple swap detected, using standard CU limit`
+            `[DEBUG] Withdrawal failed for ${validSwaps[
+              idx
+            ].asset.mint.toBase58()}: ${
+              result.reason?.message || "Unknown error"
+            }`
           );
-          return {
-            units: 1_500_000, // 1.5M CU for simple swaps
-            microLamports: 500, // Lower priority fee
-          };
+          return null;
         }
-      };
+      })
+      .filter((p) => p !== null);
 
-      const cuConfig = getComputeUnitConfig(quote);
+    this.logger.log(
+      `[DEBUG] Successfully executed ${successfulWithdrawals.length} withdrawals out of ${validSwaps.length}`
+    );
+
+    if (successfulWithdrawals.length === 0) {
+      return {
+        vaultIndex,
+        vaultTokenAmount,
+        swaps: [],
+        vaultUsdcBalance: "0",
+        requiredUsdc: "0",
+        adjustedVaultTokenAmount: "0",
+        sharePriceAfter: (Number(sharePriceRaw) / 1_000_000).toString(),
+        totalValueUSDCraw: totalValueUSDCrawNumber.toString(),
+        totalValueUSDActual: totalValueUSDActual.toFixed(6),
+        mode: "price-based",
+      };
+    }
+
+    // Step 6: Build all transactions in parallel (with fresh quotes)
+    this.logger.log(
+      `[DEBUG] Building ${successfulWithdrawals.length} swap transactions in parallel (refreshing quotes)`
+    );
+    const { blockhash } = await connection.getLatestBlockhash();
+    const swapTransactions = await Promise.all(
+      successfulWithdrawals.map(async (prep) => {
+        // Refresh quote right before building to avoid stale quotes
+        let freshQuote = prep.quote;
+        let freshInstructions = prep.instructions;
+        try {
+          freshQuote = await retryWithBackoff(() =>
+            getJupiterQuote(
+              prep.asset.mint,
+              STABLECOIN_MINT,
+              prep.withdrawAmount
+            )
+          );
+          freshInstructions = await retryWithBackoff(() =>
+            getJupiterInstructions(freshQuote, factoryAdminPubkey, vaultUSDC)
+          );
+        } catch (refreshError) {
+          this.logger.log(
+            `[DEBUG] Failed to refresh quote for ${prep.asset.mint.toBase58()}, using cached`
+          );
+        }
+
+        const swapInstruction = deserializeInstruction(
+          freshInstructions.swapInstruction
+        );
+        const swapIxs: TransactionInstruction[] = [];
+
+        const cuConfig = getComputeUnitConfig(freshQuote);
+        swapIxs.push(
+          ComputeBudgetProgram.setComputeUnitLimit({ units: cuConfig.units })
+        );
+        swapIxs.push(
+          ComputeBudgetProgram.setComputeUnitPrice({
+            microLamports: cuConfig.microLamports,
+          })
+        );
+
+        if (freshInstructions.setupInstructions?.length)
+          swapIxs.push(
+            ...freshInstructions.setupInstructions.map(deserializeInstruction)
+          );
+        swapIxs.push(deserializeInstruction(freshInstructions.swapInstruction));
+        if (freshInstructions.cleanupInstruction)
+          swapIxs.push(
+            deserializeInstruction(freshInstructions.cleanupInstruction)
+          );
+
+        const lutAddrs: string[] =
+          freshInstructions.addressLookupTableAddresses || [];
+        const alts = await getAddressLookupTableAccounts(lutAddrs);
+
+        const messageV0 = new TransactionMessage({
+          payerKey: factoryAdminPubkey,
+          recentBlockhash: blockhash,
+          instructions: swapIxs,
+        }).compileToV0Message(alts);
+        const vtx = new VersionedTransaction(messageV0);
+        vtx.sign([adminKeypair]);
+
+        return { ...prep, signedTransaction: vtx, quote: freshQuote };
+      })
+    );
+
+    // Helper function to rebuild transaction with fresh blockhash and quote (for redeemSwapAdmin)
+    const rebuildRedeemTransaction = async (
+      prep: any
+    ): Promise<VersionedTransaction> => {
+      this.logger.log(
+        `[DEBUG] Rebuilding redeem transaction for ${prep.asset.mint.toBase58()} with fresh blockhash and quote`
+      );
+
+      // Get fresh quote
+      const freshQuote = await retryWithBackoff(() =>
+        getJupiterQuote(prep.asset.mint, STABLECOIN_MINT, prep.withdrawAmount)
+      );
+
+      // Get fresh instructions
+      const freshInstructions = await retryWithBackoff(() =>
+        getJupiterInstructions(freshQuote, factoryAdminPubkey, vaultUSDC)
+      );
+
+      // Get fresh blockhash
+      const { blockhash: newBlockhash } = await connection.getLatestBlockhash();
+
+      // Rebuild transaction
+      const swapInstruction = deserializeInstruction(
+        freshInstructions.swapInstruction
+      );
+      const swapIxs: TransactionInstruction[] = [];
+
+      const cuConfig = getComputeUnitConfig(freshQuote);
       swapIxs.push(
         ComputeBudgetProgram.setComputeUnitLimit({ units: cuConfig.units })
       );
@@ -1321,77 +2324,189 @@ export class TxEventManagementService {
         })
       );
 
-      if (instructions.setupInstructions?.length)
+      if (freshInstructions.setupInstructions?.length)
         swapIxs.push(
-          ...instructions.setupInstructions.map(deserializeInstruction)
+          ...freshInstructions.setupInstructions.map(deserializeInstruction)
         );
-      // Skip Jupiter's computeBudgetInstructions to avoid duplicates
-      // if (instructions.computeBudgetInstructions?.length) swapIxs.push(...instructions.computeBudgetInstructions.map(deserializeInstruction));
-      swapIxs.push(deserializeInstruction(instructions.swapInstruction));
-      if (instructions.cleanupInstruction)
-        swapIxs.push(deserializeInstruction(instructions.cleanupInstruction));
-      this.logger.log(
-        `[redeemSwapAdmin] Building transaction for ${asset.mint.toBase58()} with ${
-          swapIxs.length
-        } instructions`
-      );
+      swapIxs.push(deserializeInstruction(freshInstructions.swapInstruction));
+      if (freshInstructions.cleanupInstruction)
+        swapIxs.push(
+          deserializeInstruction(freshInstructions.cleanupInstruction)
+        );
 
-      const lutAddrs: string[] = instructions.addressLookupTableAddresses || [];
+      const lutAddrs: string[] =
+        freshInstructions.addressLookupTableAddresses || [];
       const alts = await getAddressLookupTableAccounts(lutAddrs);
-      const { blockhash } = await connection.getLatestBlockhash();
+
       const messageV0 = new TransactionMessage({
         payerKey: factoryAdminPubkey,
-        recentBlockhash: blockhash,
+        recentBlockhash: newBlockhash,
         instructions: swapIxs,
       }).compileToV0Message(alts);
       const vtx = new VersionedTransaction(messageV0);
       vtx.sign([adminKeypair]);
-      const sig = await retryWithBackoff(
-        () =>
-          connection.sendRawTransaction(vtx.serialize(), {
-            skipPreflight: false,
-            preflightCommitment: "confirmed",
-          }),
-        5
-      );
-      await retryWithBackoff(
-        () => connection.confirmTransaction(sig, "confirmed"),
-        3
-      );
-      results.push({
-        mint: asset.mint.toBase58(),
-        input: targetByAllocation.toString(),
-        sig,
-      });
 
-      // History: per-leg executed (use existing action name)
-      try {
-        const vf = await this.vaultFactoryService.findByAddress(
-          vault.toBase58()
-        );
-        await this.historyService.createTransactionHistory(
-          "swap_completed",
-          `Admin redeem swap executed for ${asset.mint.toBase58()} -> USDC`,
-          undefined,
-          vf?._id?.toString(),
-          {
-            vaultIndex,
-            vaultAddress: vault.toBase58(),
-            assetMint: asset.mint.toBase58(),
-            inputAmount: targetByAllocation.toString(),
-          },
-          sig
-        );
-      } catch (e) {
-        this.logger.log(`Failed to write per-leg history: ${e?.message}`);
-      }
+      return vtx;
+    };
 
-      // Add delay between assets to avoid rate limiting
-      if (i < underlying.length - 1) {
-        const delay = 2000 + Math.random() * 1000; // 2-3 seconds
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
+    // Step 7: Send all transactions in parallel
+    this.logger.log(
+      `[DEBUG] Sending ${swapTransactions.length} swap transactions in parallel`
+    );
+    const sentTransactionResults = await Promise.allSettled(
+      swapTransactions.map(async (prep) => {
+        const { signedTransaction, asset } = prep;
+
+        const sendWithRetry = async (
+          attemptNumber: number = 1
+        ): Promise<string> => {
+          // Get fresh quote and blockhash right before sending to minimize expiration window
+          let transactionToSend = signedTransaction;
+          let shouldSkipPreflight = false;
+
+          // If this is a retry (attempt > 1), rebuild with fresh data
+          // This ensures we always have the freshest possible quote
+          if (attemptNumber > 1) {
+            this.logger.log(
+              `[DEBUG] Retry attempt ${attemptNumber} for ${asset.mint.toBase58()}, rebuilding with fresh blockhash and quote`
+            );
+            transactionToSend = await rebuildRedeemTransaction(prep);
+            shouldSkipPreflight = true; // Skip preflight on retries to avoid quote expiration during simulation
+          }
+
+          try {
+            this.logger.log(
+              `[API CALL] 🔗 Solana RPC: sendRawTransaction for ${asset.mint.toBase58()} (attempt ${attemptNumber}, skipPreflight: ${shouldSkipPreflight})`
+            );
+            return await connection.sendRawTransaction(
+              transactionToSend.serialize(),
+              {
+                skipPreflight: shouldSkipPreflight,
+                preflightCommitment: "confirmed",
+              }
+            );
+          } catch (error: any) {
+            const errorMessage = error.message || "Unknown error";
+
+            // Check if blockhash expired or Jupiter quote expired
+            if (
+              errorMessage.includes("Blockhash not found") ||
+              errorMessage.includes("blockhash") ||
+              errorMessage.includes("0x1788") ||
+              errorMessage.includes("6024")
+            ) {
+              // If we haven't rebuilt yet, rebuild now
+              if (attemptNumber === 1) {
+                this.logger.log(
+                  `[DEBUG] Redeem transaction expired for ${asset.mint.toBase58()} (${errorMessage}), rebuilding with fresh blockhash and quote`
+                );
+                const freshTransaction = await rebuildRedeemTransaction(prep);
+
+                // Retry immediately with fresh transaction (skip preflight)
+                this.logger.log(
+                  `[DEBUG] Retrying send for ${asset.mint.toBase58()} with fresh transaction (skipping preflight)`
+                );
+                return await connection.sendRawTransaction(
+                  freshTransaction.serialize(),
+                  {
+                    skipPreflight: true, // Skip preflight to avoid quote expiration during simulation
+                    preflightCommitment: "confirmed",
+                  }
+                );
+              }
+              // If we already rebuilt and it still fails, throw to let retry loop handle it
+              throw error;
+            }
+            throw error;
+          }
+        };
+
+        // Use a custom retry that rebuilds on each attempt
+        let lastError: any;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            return await sendWithRetry(attempt);
+          } catch (error: any) {
+            lastError = error;
+            if (attempt < 3) {
+              const baseDelay = 1000 * Math.pow(2, attempt - 1);
+              const jitter = Math.random() * 1000;
+              const delay = baseDelay + jitter;
+              this.logger.log(
+                `[DEBUG] Waiting ${Math.round(delay)}ms before retry...`
+              );
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            }
+          }
+        }
+        throw lastError;
+      })
+    );
+
+    // Step 8: Confirm all transactions in parallel
+    this.logger.log(
+      `[DEBUG] Confirming ${sentTransactionResults.length} swap transactions in parallel`
+    );
+    const confirmationResults = await Promise.allSettled(
+      sentTransactionResults.map(async (result, idx) => {
+        if (result.status === "fulfilled") {
+          await retryWithBackoff(
+            () => connection.confirmTransaction(result.value, "confirmed"),
+            3
+          );
+          return {
+            mint: swapTransactions[idx].asset.mint.toBase58(),
+            input: swapTransactions[idx].withdrawAmount.toString(),
+            sig: result.value,
+          };
+        }
+        return null;
+      })
+    );
+
+    // Collect results and create history records
+    const confirmedSwaps = confirmationResults
+      .map((r) => {
+        if (r.status === "fulfilled" && r.value) {
+          return r.value;
+        }
+        return null;
+      })
+      .filter((r) => r !== null);
+
+    // Create history records in parallel (fire and forget)
+    Promise.allSettled(
+      confirmedSwaps.map(async (swap) => {
+        try {
+          const vf = await this.vaultFactoryService.findByAddress(
+            vault.toBase58()
+          );
+          if (vf) {
+            await this.historyService.createTransactionHistory(
+              "swap_completed",
+              `Admin redeem swap executed for ${swap.mint} -> USDC`,
+              undefined,
+              vf._id?.toString(),
+              {
+                vaultIndex,
+                vaultAddress: vault.toBase58(),
+                assetMint: swap.mint,
+                inputAmount: swap.input,
+              },
+              swap.sig
+            );
+          }
+        } catch (e) {
+          this.logger.log(
+            `Failed to write history for ${swap.mint}: ${e?.message}`
+          );
+        }
+      })
+    ).catch(() => {
+      // Ignore errors in history creation
+    });
+
+    results.push(...confirmedSwaps);
 
     // After swaps, compute whether vault USDC can cover requested shares and suggest adjusted amount
     const latestVaultAcc: any = await (program as any).account.vault.fetch(
@@ -1522,7 +2637,10 @@ export class TxEventManagementService {
       // Return vault factory creation results
       return vaultCreationResults;
     } catch (error) {
-      this.logger.log(`Error reading transaction: ${error.message}`, error.stack);
+      this.logger.log(
+        `Error reading transaction: ${error.message}`,
+        error.stack
+      );
 
       // Handle specific Solana RPC errors
       if (error.message?.includes("Invalid transaction signature")) {

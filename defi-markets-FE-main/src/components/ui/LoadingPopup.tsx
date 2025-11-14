@@ -24,11 +24,13 @@ const LoadingPopup: React.FC<LoadingPopupProps> = ({
   currentStepIndex,
 }) => {
   // Keep progress calculation in one place so label and bar stay in sync
+  // Progress is based on completed steps only (not the current in-progress step)
+  // Only show 100% when all steps are actually complete
   const progress = Math.max(
     0,
     Math.min(
       100,
-      Math.round(((currentStepIndex + 1) / Math.max(steps.length, 1)) * 100)
+      Math.round((currentStepIndex / Math.max(steps.length, 1)) * 100)
     )
   );
 

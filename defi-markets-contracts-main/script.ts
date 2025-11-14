@@ -12,16 +12,10 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 // Store created stablecoin mint address
 let CREATED_STABLECOIN_MINT: PublicKey | null = null;
 
-const PRIVATE_KEY = `
-{
-  "secretKey": [
-    ...
-  ]
-}
-`;
+
 
 // Hardcoded stablecoin mint address (created earlier)
-const STABLECOIN_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+const STABLECOIN_MINT = new PublicKey("E1QTr64giwB8pbPSx2Cj64fNi5sUriEAViAu1F6kQD4m");
 
 // Random generation functions
 function generateRandomVaultName(): string {
@@ -51,7 +45,7 @@ function generateRandomVaultSymbol(): string {
 const keypair = Keypair.fromSecretKey(new Uint8Array(JSON.parse(PRIVATE_KEY)));
 
 // Provider + connection
-const RPC_URL = "https://api.mainnet-beta.solana.com";
+const RPC_URL = "https://api.devnet.solana.com";
 const connection = new Connection(RPC_URL, "confirmed");
 
 // Create wallet from the keypair
@@ -228,15 +222,114 @@ async function createVault(factoryPDA: PublicKey) {
     // Define underlying assets (50% TUSDT, 50% TETH)
     const TUSDT_MINT = new PublicKey("EnPkqHCtuwUKusntsvAhvCp27SEuqZbAHTgbL16oLcNN");
     const TETH_MINT = new PublicKey("7JLSv65QBmLfkCQrSYPgW8qezH5L8wC9gw5X38DrAgGk");
+    const SOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+    const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+    const WSOL_MINT = new PublicKey("So11111111111111111111111111111111111111112");
+    const BTC_MINT = new PublicKey("9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E");
+    const ETH_MINT = new PublicKey("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
+    const USDT_MINT = new PublicKey("Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB");
+    const WETH_MINT = new PublicKey("7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs");
+    const WBTC_MINT = new PublicKey("9n4nbM75f5Ui33ZbPYXn59EwSgE8CGsHtAeTH5YFeJ9E");
+    // Note: These wrapped tokens from other chains may not exist on Solana
+    // If you need them, replace with valid Solana token mint addresses
+    // For now, using placeholder Solana addresses - replace with actual mints if needed
+    const WBNB_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WBNB mint if exists
+    const WMATIC_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WMATIC mint if exists
+    const WAVAX_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WAVAX mint if exists
+    const WFTM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WFTM mint if exists
+    const WONE_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WONE mint if exists
+    const WXRP_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXRP mint if exists
+    const WXLM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXLM mint if exists
+    const WXM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXMR mint if exists
+    const WOE_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WONE mint if exists
+    const WXP_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXRP mint if exists
+    const WLM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXLM mint if exists
     
+    // 21 assets to fit within Solana transaction size limit (1232 bytes)
     const underlyingAssets = [
       {
         mintAddress: TUSDT_MINT,
-        mintBps: 5000 // 50%
+        mintBps: 476 // ~4.76%
       },
       {
         mintAddress: TETH_MINT,
-        mintBps: 5000 // 50%
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: SOL_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: USDC_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WSOL_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: BTC_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: ETH_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: USDT_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WETH_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WBTC_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WBNB_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WMATIC_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WAVAX_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WFTM_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WONE_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WXRP_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WXLM_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WXM_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WOE_MINT,
+        mintBps: 476 // ~4.76%
+      },
+      {
+        mintAddress: WXP_MINT,
+        mintBps: 478 // ~4.78%
+      },
+      {
+        mintAddress: WLM_MINT,
+        mintBps: 478 // ~4.78%
       }
     ];
 
@@ -254,20 +347,47 @@ async function createVault(factoryPDA: PublicKey) {
     const stablecoinMintForFee = STABLECOIN_MINT;
 
     // Admin's stablecoin (payer) ATA
+    console.log("💳 Ensuring admin stablecoin account exists...");
     const adminStablecoinAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       keypair,
       stablecoinMintForFee,
       keypair.publicKey
     );
+    console.log("✅ Admin stablecoin account:", adminStablecoinAccount.address.toBase58());
 
     // Factory admin's stablecoin (recipient) ATA
+    console.log("💳 Ensuring factory admin stablecoin account exists...");
     const factoryAdminStablecoinAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       keypair,
       stablecoinMintForFee,
       factory.admin
     );
+    console.log("✅ Factory admin stablecoin account:", factoryAdminStablecoinAccount.address.toBase58());
+    
+    // Verify accounts exist before proceeding - retry a few times if needed
+    let adminAccountInfo = await connection.getAccountInfo(adminStablecoinAccount.address);
+    let factoryAdminAccountInfo = await connection.getAccountInfo(factoryAdminStablecoinAccount.address);
+    
+    // Retry up to 3 times if accounts don't exist yet (network delay)
+    let retries = 0;
+    while ((!adminAccountInfo || !factoryAdminAccountInfo) && retries < 3) {
+      console.log(`⏳ Waiting for accounts to be confirmed (attempt ${retries + 1}/3)...`);
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      adminAccountInfo = await connection.getAccountInfo(adminStablecoinAccount.address);
+      factoryAdminAccountInfo = await connection.getAccountInfo(factoryAdminStablecoinAccount.address);
+      retries++;
+    }
+    
+    if (!adminAccountInfo) {
+      throw new Error(`Admin stablecoin account was not created: ${adminStablecoinAccount.address.toBase58()}`);
+    }
+    if (!factoryAdminAccountInfo) {
+      throw new Error(`Factory admin stablecoin account was not created: ${factoryAdminStablecoinAccount.address.toBase58()}`);
+    }
+    
+    console.log("✅ Both token accounts verified and ready");
 
     // Create vault
     const tx = await program.methods

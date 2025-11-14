@@ -2,21 +2,64 @@ import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { DollarSign, History, Edit, Save, X, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+  DollarSign,
+  History,
+  Edit,
+  Save,
+  X,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+} from "lucide-react";
 import { feeHistoryApi, feesManagementApi } from "@/services/api";
 import { useContract, useVaultFactory } from "@/hooks/useContract";
 import { useAppKitProvider } from "@reown/appkit/react";
 import { VAULT_FACTORY_PROGRAM_ID } from "@/components/solana/programIds/programids";
-import { PublicKey, Transaction, TransactionInstruction } from '@solana/web3.js';
-import { BN } from '@coral-xyz/anchor';
+import {
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+} from "@solana/web3.js";
+import { BN } from "@coral-xyz/anchor";
 import { SuccessPopup } from "@/components/ui/SuccessPopup";
 import {
   percentageToBps,
@@ -25,7 +68,8 @@ import {
   getFeeUnit,
   formatFeeValue,
   validateFeeRange,
-  clampFeeValue
+  clampFeeValue,
+  usdcToLamports,
 } from "@/lib/helpers";
 
 const feeSchema = z
@@ -33,8 +77,16 @@ const feeSchema = z
     entry_fee: z.number().min(0).max(100, "Fee cannot exceed 100%").optional(),
     exit_fee: z.number().min(0).max(100, "Fee cannot exceed 100%").optional(),
     vault_creation_fee: z.number().min(0, "Fee cannot be negative").optional(),
-    management_min: z.number().min(0).max(100, "Fee cannot exceed 100%").optional(),
-    management_max: z.number().min(0).max(100, "Fee cannot exceed 100%").optional(),
+    management_min: z
+      .number()
+      .min(0)
+      .max(100, "Fee cannot exceed 100%")
+      .optional(),
+    management_max: z
+      .number()
+      .min(0)
+      .max(100, "Fee cannot exceed 100%")
+      .optional(),
     vault_creator_management_fee: z
       .number()
       .min(0)
@@ -47,16 +99,31 @@ const feeSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
-    const { vault_creator_management_fee: creatorPct, platform_owner_management_fee: platformPct } = data as any;
+    const {
+      vault_creator_management_fee: creatorPct,
+      platform_owner_management_fee: platformPct,
+    } = data as any;
 
     const creatorProvided = creatorPct !== undefined && creatorPct !== null;
     const platformProvided = platformPct !== undefined && platformPct !== null;
 
     // If one provided, both must be provided
-    if ((creatorProvided && !platformProvided) || (!creatorProvided && platformProvided)) {
-      const message = "Both split percentages are required when setting management fee split";
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["vault_creator_management_fee"], message });
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["platform_owner_management_fee"], message });
+    if (
+      (creatorProvided && !platformProvided) ||
+      (!creatorProvided && platformProvided)
+    ) {
+      const message =
+        "Both split percentages are required when setting management fee split";
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["vault_creator_management_fee"],
+        message,
+      });
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["platform_owner_management_fee"],
+        message,
+      });
       return;
     }
 
@@ -65,8 +132,16 @@ const feeSchema = z
       const sum = Number(creatorPct) + Number(platformPct);
       if (Math.abs(sum - 100) > 1e-6) {
         const message = "Split must sum to 100%";
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["vault_creator_management_fee"], message });
-        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["platform_owner_management_fee"], message });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["vault_creator_management_fee"],
+          message,
+        });
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["platform_owner_management_fee"],
+          message,
+        });
       }
     }
   });
@@ -227,10 +302,19 @@ const Fees = () => {
   });
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [isLoadingFees, setIsLoadingFees] = useState(false);
-  const [currentFeeConfig, setCurrentFeeConfig] = useState<FeeConfig | null>(null);
+  const [currentFeeConfig, setCurrentFeeConfig] = useState<FeeConfig | null>(
+    null
+  );
 
   // Contract-related state and hooks
-  const { callContract, loading: contractLoading, error: contractError, isConnected, address, connection } = useContract();
+  const {
+    callContract,
+    loading: contractLoading,
+    error: contractError,
+    isConnected,
+    address,
+    connection,
+  } = useContract();
   const { walletProvider } = useAppKitProvider("solana");
 
   // Vault factory hook for Anchor program operations
@@ -241,7 +325,7 @@ const Fees = () => {
     address: factoryAddress,
     updateFactoryFees: anchorUpdateFactoryFees,
     getFactoryInfo,
-    getFactoryPDA
+    getFactoryPDA,
   } = useVaultFactory();
 
   const [isDeploying, setIsDeploying] = useState(false);
@@ -281,7 +365,8 @@ const Fees = () => {
     } catch (error) {
       toast({
         title: "Error",
-        description: "Failed to load current fee configuration. Please try again.",
+        description:
+          "Failed to load current fee configuration. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -318,13 +403,18 @@ const Fees = () => {
     if (isEditing && currentFeeConfig) {
       const fees = currentFeeConfig.fees;
       form.reset({
-        entry_fee: fees.find(f => f.type === 'entry_fee')?.feeRate,
-        exit_fee: fees.find(f => f.type === 'exit_fee')?.feeRate,
-        vault_creation_fee: fees.find(f => f.type === 'vault_creation_fee')?.feeRate,
-        management_min: fees.find(f => f.type === 'management')?.minFeeRate,
-        management_max: fees.find(f => f.type === 'management')?.maxFeeRate,
-        vault_creator_management_fee: fees.find(f => f.type === 'vault_creator_management_fee')?.feeRate,
-        platform_owner_management_fee: fees.find(f => f.type === 'platform_owner_management_fee')?.feeRate,
+        entry_fee: fees.find((f) => f.type === "entry_fee")?.feeRate,
+        exit_fee: fees.find((f) => f.type === "exit_fee")?.feeRate,
+        vault_creation_fee: fees.find((f) => f.type === "vault_creation_fee")
+          ?.feeRate,
+        management_min: fees.find((f) => f.type === "management")?.minFeeRate,
+        management_max: fees.find((f) => f.type === "management")?.maxFeeRate,
+        vault_creator_management_fee: fees.find(
+          (f) => f.type === "vault_creator_management_fee"
+        )?.feeRate,
+        platform_owner_management_fee: fees.find(
+          (f) => f.type === "platform_owner_management_fee"
+        )?.feeRate,
       });
     }
   }, [isEditing, currentFeeConfig, form]);
@@ -358,7 +448,8 @@ const Fees = () => {
     if (!program) {
       toast({
         title: "Program Not Ready",
-        description: programError || "Anchor program not initialized. Please try again.",
+        description:
+          programError || "Anchor program not initialized. Please try again.",
         variant: "destructive",
       });
       return;
@@ -373,9 +464,13 @@ const Fees = () => {
 
     try {
       // Validate management fee range if both values are provided
-      if (data.management_min !== undefined && data.management_min !== null &&
-        data.management_max !== undefined && data.management_max !== null &&
-        !validateFeeRange(data.management_min, data.management_max)) {
+      if (
+        data.management_min !== undefined &&
+        data.management_min !== null &&
+        data.management_max !== undefined &&
+        data.management_max !== null &&
+        !validateFeeRange(data.management_min, data.management_max)
+      ) {
         toast({
           title: "Invalid Range",
           description: "Management fee minimum cannot be greater than maximum.",
@@ -385,9 +480,13 @@ const Fees = () => {
       }
 
       // Check if any fees were provided
-      const hasAnyFees = data.entry_fee !== undefined || data.exit_fee !== undefined ||
-        data.vault_creation_fee !== undefined || data.management_min !== undefined ||
-        data.management_max !== undefined || data.vault_creator_management_fee !== undefined ||
+      const hasAnyFees =
+        data.entry_fee !== undefined ||
+        data.exit_fee !== undefined ||
+        data.vault_creation_fee !== undefined ||
+        data.management_min !== undefined ||
+        data.management_max !== undefined ||
+        data.vault_creator_management_fee !== undefined ||
         data.platform_owner_management_fee !== undefined;
 
       if (!hasAnyFees) {
@@ -401,7 +500,8 @@ const Fees = () => {
 
       toast({
         title: "Updating Factory Fees...",
-        description: "Your factory fees are being updated on the blockchain. This may take a few minutes.",
+        description:
+          "Your factory fees are being updated on the blockchain. This may take a few minutes.",
       });
 
       // Get current factory info to preserve existing values for unchanged fees
@@ -410,30 +510,55 @@ const Fees = () => {
         currentFactoryInfo = await getFactoryInfo();
         console.log("📊 Current factory info:", currentFactoryInfo);
       } catch (error) {
-        console.warn("Could not fetch current factory info, using defaults:", error);
+        console.warn(
+          "Could not fetch current factory info, using defaults:",
+          error
+        );
         // Use default values if we can't fetch current info
         currentFactoryInfo = {
           entryFeeBps: 25,
           exitFeeBps: 25,
-          vaultCreationFeeBps: 200, // 2% in basis points
+          vaultCreationFeeUsdc: 2000000, // 2 USDC in lamports (2 * 1e6)
           minManagementFeeBps: 50,
           maxManagementFeeBps: 300,
         };
       }
 
       // Prepare fee values - use provided values or keep existing ones
-      const entryFeeBps = data.entry_fee !== undefined ? percentageToBps(data.entry_fee) : currentFactoryInfo.entryFeeBps;
-      const exitFeeBps = data.exit_fee !== undefined ? percentageToBps(data.exit_fee) : currentFactoryInfo.exitFeeBps;
-      const vaultCreationFeeBps = data.vault_creation_fee !== undefined ? percentageToBps(data.vault_creation_fee) : currentFactoryInfo.vaultCreationFeeBps;
-      const minManagementFeeBps = data.management_min !== undefined ? percentageToBps(data.management_min) : currentFactoryInfo.minManagementFeeBps;
-      const maxManagementFeeBps = data.management_max !== undefined ? percentageToBps(data.management_max) : currentFactoryInfo.maxManagementFeeBps;
-      const vaultCreatorFeeRatioBps = data.vault_creator_management_fee !== undefined ? percentageToBps(data.vault_creator_management_fee) : (currentFactoryInfo.vaultCreatorFeeRatioBps || 70); // Default to 0.7%
-      const platformFeeRatioBps = data.platform_owner_management_fee !== undefined ? percentageToBps(data.platform_owner_management_fee) : (currentFactoryInfo.platformFeeRatioBps || 30); // Default to 0.3%
+      const entryFeeBps =
+        data.entry_fee !== undefined
+          ? percentageToBps(data.entry_fee)
+          : currentFactoryInfo.entryFeeBps;
+      const exitFeeBps =
+        data.exit_fee !== undefined
+          ? percentageToBps(data.exit_fee)
+          : currentFactoryInfo.exitFeeBps;
+      // Convert USDC amount to lamports (1 USDC = 1e6 lamports)
+      const vaultCreationFeeUsdc =
+        data.vault_creation_fee !== undefined
+          ? usdcToLamports(data.vault_creation_fee)
+          : Number(currentFactoryInfo.vaultCreationFeeUsdc);
+      const minManagementFeeBps =
+        data.management_min !== undefined
+          ? percentageToBps(data.management_min)
+          : currentFactoryInfo.minManagementFeeBps;
+      const maxManagementFeeBps =
+        data.management_max !== undefined
+          ? percentageToBps(data.management_max)
+          : currentFactoryInfo.maxManagementFeeBps;
+      const vaultCreatorFeeRatioBps =
+        data.vault_creator_management_fee !== undefined
+          ? percentageToBps(data.vault_creator_management_fee)
+          : currentFactoryInfo.vaultCreatorFeeRatioBps || 70; // Default to 0.7%
+      const platformFeeRatioBps =
+        data.platform_owner_management_fee !== undefined
+          ? percentageToBps(data.platform_owner_management_fee)
+          : currentFactoryInfo.platformFeeRatioBps || 30; // Default to 0.3%
 
       console.log("💰 Updating factory fees with values:", {
         entryFeeBps,
         exitFeeBps,
-        vaultCreationFeeBps,
+        vaultCreationFeeUsdc,
         minManagementFeeBps,
         maxManagementFeeBps,
         vaultCreatorFeeRatioBps,
@@ -444,7 +569,7 @@ const Fees = () => {
       const tx = await anchorUpdateFactoryFees(
         entryFeeBps,
         exitFeeBps,
-        vaultCreationFeeBps,
+        vaultCreationFeeUsdc,
         minManagementFeeBps,
         maxManagementFeeBps,
         vaultCreatorFeeRatioBps,
@@ -463,7 +588,7 @@ const Fees = () => {
           feesToUpdate.push({
             feeRate: data.entry_fee,
             description: "Entry fee for vault deposits",
-            type: "entry_fee"
+            type: "entry_fee",
           });
         }
 
@@ -471,24 +596,30 @@ const Fees = () => {
           feesToUpdate.push({
             feeRate: data.exit_fee,
             description: "Exit fee for vault redemptions",
-            type: "exit_fee"
+            type: "exit_fee",
           });
         }
 
         if (data.vault_creation_fee !== undefined) {
+          // IMPORTANT: vault_creation_fee feeRate is in USDC amount (e.g., 2.0 = 2 USDC)
+          // NOT a percentage or basis points. Backend must interpret this correctly.
+          // Other fee types (entry_fee, exit_fee, etc.) use percentage values.
           feesToUpdate.push({
-            feeRate: data.vault_creation_fee,
+            feeRate: data.vault_creation_fee, // USDC amount (e.g., 2.0)
             description: "Vault creation fee",
-            type: "vault_creation_fee"
+            type: "vault_creation_fee",
           });
         }
 
-        if (data.management_min !== undefined || data.management_max !== undefined) {
+        if (
+          data.management_min !== undefined ||
+          data.management_max !== undefined
+        ) {
           feesToUpdate.push({
             minFeeRate: data.management_min,
             maxFeeRate: data.management_max,
             description: "Management fee range for vault operations",
-            type: "management"
+            type: "management",
           });
         }
 
@@ -496,7 +627,7 @@ const Fees = () => {
           feesToUpdate.push({
             feeRate: data.vault_creator_management_fee,
             description: "Vault creator management fee percentage",
-            type: "vault_creator_management_fee"
+            type: "vault_creator_management_fee",
           });
         }
 
@@ -504,7 +635,7 @@ const Fees = () => {
           feesToUpdate.push({
             feeRate: data.platform_owner_management_fee,
             description: "Platform owner management fee percentage",
-            type: "platform_owner_management_fee"
+            type: "platform_owner_management_fee",
           });
         }
 
@@ -512,13 +643,15 @@ const Fees = () => {
 
         // Show success popup after both blockchain update and API call are successful
         setShowSuccessPopup(true);
-
       } catch (apiError) {
         console.error("Error calling fees management API:", apiError);
         // Don't fail the entire operation if API call fails - transaction was successful
         toast({
           title: "Transaction Successful",
-          description: "Factory fees updated on blockchain, but failed to record in backend. Transaction: " + tx.slice(0, 8) + "...",
+          description:
+            "Factory fees updated on blockchain, but failed to record in backend. Transaction: " +
+            tx.slice(0, 8) +
+            "...",
           variant: "default",
         });
 
@@ -527,19 +660,22 @@ const Fees = () => {
       }
 
       // Refresh both fee history and current fees
-      await Promise.all([
-        fetchFeeHistory(),
-        fetchCurrentFees()
-      ]);
+      await Promise.all([fetchFeeHistory(), fetchCurrentFees()]);
 
       toast({
         title: "Factory Fees Updated Successfully! 🎉",
-        description: `Your factory fees have been updated on the blockchain. Transaction: ${tx.slice(0, 8)}...`,
+        description: `Your factory fees have been updated on the blockchain. Transaction: ${tx.slice(
+          0,
+          8
+        )}...`,
       });
 
       setIsEditing(false);
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Failed to update factory fees";
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : "Failed to update factory fees";
       setDeployError(errorMessage);
 
       toast({
@@ -559,7 +695,9 @@ const Fees = () => {
   const getCurrentManagementFee = () => {
     if (!currentFeeConfig) return null;
 
-    const managementFee = currentFeeConfig.fees.find(f => f.type === 'management');
+    const managementFee = currentFeeConfig.fees.find(
+      (f) => f.type === "management"
+    );
     if (!managementFee) return null;
 
     return {
@@ -567,7 +705,7 @@ const Fees = () => {
       maxRate: managementFee.maxFeeRate,
       description: managementFee.description,
       effectiveDate: currentFeeConfig.updatedAt,
-      createdBy: currentFeeConfig.createdBy?.email || 'Unknown'
+      createdBy: currentFeeConfig.createdBy?.email || "Unknown",
     };
   };
 
@@ -576,39 +714,43 @@ const Fees = () => {
     if (record.metadata?.feeRate) {
       return {
         feeRate: record.metadata.feeRate,
-        type: 'management',
-        description: record.metadata.description || 'Management fee'
+        type: "management",
+        description: record.metadata.description || "Management fee",
       };
     }
 
     if (record.feeId?.fees && record.feeId.fees.length > 0) {
       // Get the first fee or find management fee
-      const managementFee = record.feeId.fees.find(f => f.type === 'management');
+      const managementFee = record.feeId.fees.find(
+        (f) => f.type === "management"
+      );
       const fee = managementFee || record.feeId.fees[0];
 
       return {
         feeRate: fee.feeRate || fee.minFeeRate || 0,
         type: fee.type,
-        description: fee.description
+        description: fee.description,
       };
     }
 
     return {
       feeRate: 0,
-      type: 'unknown',
-      description: 'Unknown fee type'
+      type: "unknown",
+      description: "Unknown fee type",
     };
   };
 
   // Helper function to get action display text
   const getActionDisplay = (action: string) => {
     switch (action) {
-      case 'fee_created':
-        return 'Created';
-      case 'fee_updated':
-        return 'Updated';
+      case "fee_created":
+        return "Created";
+      case "fee_updated":
+        return "Updated";
       default:
-        return action.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+        return action
+          .replace("_", " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
     }
   };
 
@@ -623,43 +765,64 @@ const Fees = () => {
       if (changes.entryFee) {
         const from = changes.entryFee.from;
         const to = changes.entryFee.to;
-        const unit = changes.entryFee.unit || getFeeUnit('entry_fee');
-        changeDetails.push(`${getFeeTypeDisplayName('entry_fee')}: ${from}${unit} → ${to}${unit}`);
+        const unit = changes.entryFee.unit || getFeeUnit("entry_fee");
+        changeDetails.push(
+          `${getFeeTypeDisplayName("entry_fee")}: ${from}${unit} → ${to}${unit}`
+        );
       }
 
       // Exit fee changes
       if (changes.exitFee) {
         const from = changes.exitFee.from;
         const to = changes.exitFee.to;
-        const unit = changes.exitFee.unit || getFeeUnit('exit_fee');
-        changeDetails.push(`${getFeeTypeDisplayName('exit_fee')}: ${from}${unit} → ${to}${unit}`);
+        const unit = changes.exitFee.unit || getFeeUnit("exit_fee");
+        changeDetails.push(
+          `${getFeeTypeDisplayName("exit_fee")}: ${from}${unit} → ${to}${unit}`
+        );
       }
 
       // Vault creation fee changes
       if (changes.vaultCreationFee) {
         const from = changes.vaultCreationFee.from;
         const to = changes.vaultCreationFee.to;
-        const unit = changes.vaultCreationFee.unit || getFeeUnit('vault_creation_fee');
-        changeDetails.push(`${getFeeTypeDisplayName('vault_creation_fee')}: ${from}${unit} → ${to}${unit}`);
+        const unit =
+          changes.vaultCreationFee.unit || getFeeUnit("vault_creation_fee");
+        changeDetails.push(
+          `${getFeeTypeDisplayName(
+            "vault_creation_fee"
+          )}: ${from}${unit} → ${to}${unit}`
+        );
       }
 
       // Management fee min changes
       if (changes.managementFeeMin) {
         const from = changes.managementFeeMin.from;
         const to = changes.managementFeeMin.to;
-        const unit = changes.managementFeeMin.unit || getFeeUnit('management_min');
-        changeDetails.push(`${getFeeTypeDisplayName('management_min')}: ${from}${unit} → ${to}${unit}`);
+        const unit =
+          changes.managementFeeMin.unit || getFeeUnit("management_min");
+        changeDetails.push(
+          `${getFeeTypeDisplayName(
+            "management_min"
+          )}: ${from}${unit} → ${to}${unit}`
+        );
       }
 
       // Management fee max changes
       if (changes.managementFeeMax) {
         const from = changes.managementFeeMax.from;
         const to = changes.managementFeeMax.to;
-        const unit = changes.managementFeeMax.unit || getFeeUnit('management_max');
-        changeDetails.push(`${getFeeTypeDisplayName('management_max')}: ${from}${unit} → ${to}${unit}`);
+        const unit =
+          changes.managementFeeMax.unit || getFeeUnit("management_max");
+        changeDetails.push(
+          `${getFeeTypeDisplayName(
+            "management_max"
+          )}: ${from}${unit} → ${to}${unit}`
+        );
       }
 
-      return changeDetails.length > 0 ? changeDetails.join(', ') : record.description;
+      return changeDetails.length > 0
+        ? changeDetails.join(", ")
+        : record.description;
     }
 
     // Handle manual API updates (legacy format)
@@ -667,28 +830,42 @@ const Fees = () => {
       const changes = record.metadata.changes.fees;
       const changeDetails: string[] = [];
 
-      Object.entries(changes).forEach(([feeType, changeData]: [string, any]) => {
-        if (changeData.feeRate) {
-          const from = changeData.feeRate.from;
-          const to = changeData.feeRate.to;
-          const unit = getFeeUnit(feeType);
-          changeDetails.push(`${getFeeTypeDisplayName(feeType)}: ${from}${unit} → ${to}${unit}`);
+      Object.entries(changes).forEach(
+        ([feeType, changeData]: [string, any]) => {
+          if (changeData.feeRate) {
+            const from = changeData.feeRate.from;
+            const to = changeData.feeRate.to;
+            const unit = getFeeUnit(feeType);
+            changeDetails.push(
+              `${getFeeTypeDisplayName(feeType)}: ${from}${unit} → ${to}${unit}`
+            );
+          }
+          if (changeData.minFeeRate) {
+            const from = changeData.minFeeRate.from;
+            const to = changeData.minFeeRate.to;
+            const unit = getFeeUnit(feeType);
+            changeDetails.push(
+              `${getFeeTypeDisplayName(
+                feeType
+              )} min: ${from}${unit} → ${to}${unit}`
+            );
+          }
+          if (changeData.maxFeeRate) {
+            const from = changeData.maxFeeRate.from;
+            const to = changeData.maxFeeRate.to;
+            const unit = getFeeUnit(feeType);
+            changeDetails.push(
+              `${getFeeTypeDisplayName(
+                feeType
+              )} max: ${from}${unit} → ${to}${unit}`
+            );
+          }
         }
-        if (changeData.minFeeRate) {
-          const from = changeData.minFeeRate.from;
-          const to = changeData.minFeeRate.to;
-          const unit = getFeeUnit(feeType);
-          changeDetails.push(`${getFeeTypeDisplayName(feeType)} min: ${from}${unit} → ${to}${unit}`);
-        }
-        if (changeData.maxFeeRate) {
-          const from = changeData.maxFeeRate.from;
-          const to = changeData.maxFeeRate.to;
-          const unit = getFeeUnit(feeType);
-          changeDetails.push(`${getFeeTypeDisplayName(feeType)} max: ${from}${unit} → ${to}${unit}`);
-        }
-      });
+      );
 
-      return changeDetails.length > 0 ? changeDetails.join(', ') : record.description;
+      return changeDetails.length > 0
+        ? changeDetails.join(", ")
+        : record.description;
     }
 
     return record.description;
@@ -701,21 +878,26 @@ const Fees = () => {
       const changes = record.metadata.changes;
       const changedFields: string[] = [];
 
-      if (changes.entryFee) changedFields.push(getFeeTypeDisplayName('entry_fee'));
-      if (changes.exitFee) changedFields.push(getFeeTypeDisplayName('exit_fee'));
-      if (changes.vaultCreationFee) changedFields.push(getFeeTypeDisplayName('vault_creation_fee'));
-      if (changes.managementFeeMin) changedFields.push(getFeeTypeDisplayName('management_min'));
-      if (changes.managementFeeMax) changedFields.push(getFeeTypeDisplayName('management_max'));
+      if (changes.entryFee)
+        changedFields.push(getFeeTypeDisplayName("entry_fee"));
+      if (changes.exitFee)
+        changedFields.push(getFeeTypeDisplayName("exit_fee"));
+      if (changes.vaultCreationFee)
+        changedFields.push(getFeeTypeDisplayName("vault_creation_fee"));
+      if (changes.managementFeeMin)
+        changedFields.push(getFeeTypeDisplayName("management_min"));
+      if (changes.managementFeeMax)
+        changedFields.push(getFeeTypeDisplayName("management_max"));
 
-      return changedFields.length > 0 ? changedFields.join(', ') : 'N/A';
+      return changedFields.length > 0 ? changedFields.join(", ") : "N/A";
     }
 
     // Handle manual API updates (legacy format)
     if (record.metadata?.changedFields) {
-      return record.metadata.changedFields.join(', ');
+      return record.metadata.changedFields.join(", ");
     }
 
-    return 'N/A';
+    return "N/A";
   };
 
   return (
@@ -753,17 +935,19 @@ const Fees = () => {
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
                       <span className="text-3xl font-bold">
-                        {getCurrentManagementFee()?.minRate}% - {getCurrentManagementFee()?.maxRate}%
+                        {getCurrentManagementFee()?.minRate}% -{" "}
+                        {getCurrentManagementFee()?.maxRate}%
                       </span>
-                      <Badge variant="secondary">
-                        Management Fee Range
-                      </Badge>
+                      <Badge variant="secondary">Management Fee Range</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">
                       {getCurrentManagementFee()?.description}
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Effective since {new Date(getCurrentManagementFee()?.effectiveDate || '').toLocaleDateString()}
+                      Effective since{" "}
+                      {new Date(
+                        getCurrentManagementFee()?.effectiveDate || ""
+                      ).toLocaleDateString()}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Last updated by {getCurrentManagementFee()?.createdBy}
@@ -779,9 +963,12 @@ const Fees = () => {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Update Fee Configuration</AlertDialogTitle>
+                        <AlertDialogTitle>
+                          Update Fee Configuration
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will change the fee rates for all vaults. This action cannot be undone.
+                          This will change the fee rates for all vaults. This
+                          action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
@@ -799,16 +986,24 @@ const Fees = () => {
               {currentFeeConfig && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   {currentFeeConfig.fees.map((fee) => (
-                    <div key={fee.type} className="p-3 bg-surface-2/30 rounded-lg">
+                    <div
+                      key={fee.type}
+                      className="p-3 bg-surface-2/30 rounded-lg"
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <Badge variant="outline" className="capitalize">
                           {getFeeTypeDisplayName(fee.type)}
                         </Badge>
                       </div>
                       <div className="text-lg font-semibold">
-                        {fee.feeRate ? formatFeeValue(fee.type, fee.feeRate) :
-                          fee.minFeeRate && fee.maxFeeRate ? `${formatFeeValue(fee.type, fee.minFeeRate)} - ${formatFeeValue(fee.type, fee.maxFeeRate)}` :
-                            'N/A'}
+                        {fee.feeRate
+                          ? formatFeeValue(fee.type, fee.feeRate)
+                          : fee.minFeeRate && fee.maxFeeRate
+                          ? `${formatFeeValue(
+                              fee.type,
+                              fee.minFeeRate
+                            )} - ${formatFeeValue(fee.type, fee.maxFeeRate)}`
+                          : "N/A"}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
                         {fee.description}
@@ -868,7 +1063,10 @@ const Fees = () => {
               </div> */}
 
               <Form {...form}>
-                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                <form
+                  onSubmit={form.handleSubmit(onSubmit)}
+                  className="space-y-6"
+                >
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Entry Fee */}
                     <FormField
@@ -882,8 +1080,14 @@ const Fees = () => {
                               type="number"
                               step="0.1"
                               placeholder="3.0"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -903,8 +1107,14 @@ const Fees = () => {
                               type="number"
                               step="0.1"
                               placeholder="3.0"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -918,15 +1128,20 @@ const Fees = () => {
                       name="vault_creation_fee"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Vault Creation Fee (%)</FormLabel>
+                          <FormLabel>Vault Creation Fee (USDC)</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="2.0"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
-                              disabled
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -946,8 +1161,14 @@ const Fees = () => {
                               type="number"
                               step="0.1"
                               placeholder="1.5"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -967,8 +1188,14 @@ const Fees = () => {
                               type="number"
                               step="0.1"
                               placeholder="3.0"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -982,14 +1209,22 @@ const Fees = () => {
                       name="vault_creator_management_fee"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Vault Creator Management Fee (%)</FormLabel>
+                          <FormLabel>
+                            Vault Creator Management Fee (%)
+                          </FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="0.7"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -1003,14 +1238,22 @@ const Fees = () => {
                       name="platform_owner_management_fee"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Platform Owner Management Fee (%)</FormLabel>
+                          <FormLabel>
+                            Platform Owner Management Fee (%)
+                          </FormLabel>
                           <FormControl>
                             <Input
                               type="number"
                               step="0.1"
                               placeholder="0.3"
-                              value={field.value || ''}
-                              onChange={(e) => field.onChange(e.target.value ? Number(e.target.value) : undefined)}
+                              value={field.value || ""}
+                              onChange={(e) =>
+                                field.onChange(
+                                  e.target.value
+                                    ? Number(e.target.value)
+                                    : undefined
+                                )
+                              }
                             />
                           </FormControl>
                           <FormMessage />
@@ -1022,13 +1265,20 @@ const Fees = () => {
                   <div className="flex items-center gap-2">
                     <Button
                       type="submit"
-                      disabled={isLoading || isDeploying || !factoryConnected || !program}
+                      disabled={
+                        isLoading ||
+                        isDeploying ||
+                        !factoryConnected ||
+                        !program
+                      }
                       className="gap-2"
                     >
                       {isLoading || isDeploying ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                          {isDeploying ? "Updating on Blockchain..." : "Updating..."}
+                          {isDeploying
+                            ? "Updating on Blockchain..."
+                            : "Updating..."}
                         </>
                       ) : !factoryConnected ? (
                         <>
@@ -1114,7 +1364,8 @@ const Fees = () => {
                             <Badge variant="secondary">
                               {getActionDisplay(record.action)}
                             </Badge>
-                            {record.metadata?.eventType === 'FactoryFeesUpdated' && (
+                            {record.metadata?.eventType ===
+                              "FactoryFeesUpdated" && (
                               <Badge variant="outline" className="text-xs">
                                 Blockchain
                               </Badge>
@@ -1128,7 +1379,7 @@ const Fees = () => {
                             </div>
                             {record.metadata?.updateType && (
                               <Badge variant="outline" className="text-xs">
-                                {record.metadata.updateType.replace('_', ' ')}
+                                {record.metadata.updateType.replace("_", " ")}
                               </Badge>
                             )}
                           </div>
@@ -1140,15 +1391,19 @@ const Fees = () => {
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span className="font-medium">{record.performedBy?.name || 'Unknown'}</span>
+                            <span className="font-medium">
+                              {record.performedBy?.name || "Unknown"}
+                            </span>
                             <span className="text-xs text-muted-foreground">
-                              {record.performedBy?.email || 'N/A'}
+                              {record.performedBy?.email || "N/A"}
                             </span>
                           </div>
                         </TableCell>
                         <TableCell>
                           <div className="flex flex-col">
-                            <span>{new Date(record.createdAt).toLocaleDateString()}</span>
+                            <span>
+                              {new Date(record.createdAt).toLocaleDateString()}
+                            </span>
                             <span className="text-xs text-muted-foreground">
                               {new Date(record.createdAt).toLocaleTimeString()}
                             </span>
@@ -1164,9 +1419,12 @@ const Fees = () => {
               {pagination.totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4">
                   <div className="text-sm text-muted-foreground">
-                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                    {pagination.total} entries
+                    Showing {(pagination.page - 1) * pagination.limit + 1} to{" "}
+                    {Math.min(
+                      pagination.page * pagination.limit,
+                      pagination.total
+                    )}{" "}
+                    of {pagination.total} entries
                   </div>
                   <div className="flex items-center gap-2">
                     <Button
@@ -1179,21 +1437,28 @@ const Fees = () => {
                       Previous
                     </Button>
                     <div className="flex items-center gap-1">
-                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        const pageNum = i + 1;
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={pagination.page === pageNum ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => handlePageChange(pageNum)}
-                            disabled={isLoadingHistory}
-                            className="w-8 h-8 p-0"
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      })}
+                      {Array.from(
+                        { length: Math.min(5, pagination.totalPages) },
+                        (_, i) => {
+                          const pageNum = i + 1;
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={
+                                pagination.page === pageNum
+                                  ? "default"
+                                  : "outline"
+                              }
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              disabled={isLoadingHistory}
+                              className="w-8 h-8 p-0"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        }
+                      )}
                     </div>
                     <Button
                       variant="outline"

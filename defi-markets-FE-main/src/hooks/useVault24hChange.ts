@@ -69,14 +69,17 @@ export const useVault24hChange = (vaultName: string): VaultChange24h => {
         });
 
         // Fetch price data from Jupiter API
-        const jupiterUrl = `https://lite-api.jup.ag/price/v3?ids=${mintAddresses.join(
+        const jupiterUrl = `${import.meta.env.VITE_JUPITER_PRICE_API}${mintAddresses.join(
           ","
         )}`;
-
+        const response = await fetch(jupiterUrl, {
+          headers: {
+              "x-api-key": import.meta.env.VITE_JUPITER_API_KEY,
+          },
+        });
+        console.log("💰 Price data fetched:", response);
         // console.log(`\n🌐 Fetching prices from Jupiter API...`);
         // console.log(`   URL: ${jupiterUrl}`);
-
-        const response = await fetch(jupiterUrl);
 
         if (!response.ok) {
           console.error("❌ Failed to fetch prices from Jupiter API");

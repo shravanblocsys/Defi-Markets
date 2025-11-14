@@ -12,6 +12,7 @@ import {
 } from "../../schemas/share-price-history.schema";
 import { VaultFactoryModule } from "../vault-factory/vault-factory.module";
 import { ConfigModule } from "../config/config.module";
+import { AssetAllocationModule } from "../asset-allocation/asset-allocation.module";
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ConfigModule } from "../config/config.module";
     ]),
     forwardRef(() => VaultFactoryModule),
     ConfigModule,
+    AssetAllocationModule,
   ],
   providers: [ChartsService],
   controllers: [ChartsController],

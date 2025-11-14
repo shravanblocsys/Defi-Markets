@@ -49,8 +49,6 @@ npm install
 yarn install
 ```
 
-
-
 3. **Start MongoDB**
 
    - Install MongoDB locally, or

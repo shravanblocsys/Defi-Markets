@@ -149,4 +149,4 @@ For endpoint details, request/response schemas, and auth flow, see:
 
 ## 🔗 Links
 
-- [Live Demo](https://defimarkets.blocsys.com/)
+- [Live Demo](https://app.defimarkets.finance/)

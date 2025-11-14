@@ -129,7 +129,7 @@ export const getFeeUnit = (feeType: string): string => {
   const unitMap: Record<string, string> = {
     'entry_fee': '%',
     'exit_fee': '%',
-    'vault_creation_fee': '%',
+    'vault_creation_fee': ' USDC', // vault_creation_fee is stored as USDC amount, not percentage
     'management': '%',
     'management_min': '%',
     'management_max': '%',

@@ -14,6 +14,8 @@ import {
 import { VaultFactoryService } from "../vault-factory/vault-factory.service";
 import { Inject, forwardRef } from "@nestjs/common";
 import { ConfigService } from "../config/config.service";
+import { AssetAllocationService } from "../asset-allocation/asset-allocation.service";
+import { NetworkType } from "../asset-allocation/entities/asset-allocation.entity";
 import { PublicKey, Connection } from "@solana/web3.js";
 import {
   getAccount,
@@ -71,8 +73,8 @@ export class ChartsService {
   private readonly logger = new Logger(ChartsService.name);
   private connection: Connection;
   private program: anchor.Program;
-  private tokenDecimalsCache: Map<string, number> = new Map();
   private readonly JUP_PRICE_API = "https://lite-api.jup.ag/price/v3?ids=";
+  private readonly JUPITER_API_KEY: string | undefined;
 
   constructor(
     @InjectModel(TokenPrice.name)
@@ -81,15 +83,30 @@ export class ChartsService {
     private readonly sharePriceHistoryModel: Model<SharePriceHistoryDocument>,
     @Inject(forwardRef(() => VaultFactoryService))
     private readonly vaultFactoryService: VaultFactoryService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly assetAllocationService: AssetAllocationService
   ) {
+    this.JUPITER_API_KEY = this.configService.get("JUPITER_API_KEY");
     this.initializeSolanaConnection();
   }
 
   private initializeSolanaConnection(): void {
+    // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
+    const heliusRpcUrl = this.configService.get("HELIUS_RPC_URL");
+    const solanaRpcUrl = this.configService.get("SOLANA_RPC_URL");
     const rpcUrl =
-      this.configService.get("SOLANA_RPC_URL") ||
+      heliusRpcUrl ||
+      solanaRpcUrl ||
       "https://api.mainnet-beta.solana.com";
+    
+    if (heliusRpcUrl) {
+      this.logger.log(`Using Helius RPC URL: ${heliusRpcUrl}`);
+    } else if (solanaRpcUrl) {
+      this.logger.log(`Using Solana RPC URL: ${solanaRpcUrl}`);
+    } else {
+      this.logger.log(`Using default Solana RPC URL: ${rpcUrl}`);
+    }
+    
     this.connection = new Connection(rpcUrl, "confirmed");
 
     const factoryAddress = this.configService.get(
@@ -144,9 +161,7 @@ export class ChartsService {
    * If vaultIds is provided (comma-separated), only those vaults are processed.
    * When vaultIds is not provided, also returns featuredVaults array.
    */
-  async getVaultsTotalUsdSequential(
-    vaultIds?: string
-  ): Promise<{
+  async getVaultsTotalUsdSequential(vaultIds?: string): Promise<{
     data: Array<{
       vaultId: string;
       vaultName: string;
@@ -173,7 +188,7 @@ export class ChartsService {
     // Determine target vaults
     let targetVaults: any[] = [];
     const isFetchingAll = !vaultIds || !vaultIds.trim();
-    
+
     if (!isFetchingAll) {
       const ids = vaultIds
         .split(",")
@@ -266,7 +281,9 @@ export class ChartsService {
 
       // Check if it's Token-2022 program
       if (mintInfo.owner.equals(TOKEN_2022_PROGRAM_ID)) {
-        this.logger.log(`Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`);
+        this.logger.log(
+          `Using TOKEN_2022_PROGRAM_ID for mint ${mint.toBase58()}`
+        );
         return TOKEN_2022_PROGRAM_ID;
       }
 
@@ -285,32 +302,51 @@ export class ChartsService {
 
   private async getTokenDecimals(mintAddress: PublicKey): Promise<number> {
     const key = mintAddress.toBase58();
-    if (this.tokenDecimalsCache.has(key)) {
-      const cached = this.tokenDecimalsCache.get(key)!;
-      this.logger.debug(`Using cached decimals for ${key}: ${cached}`);
-      return cached;
-    }
 
     try {
       // First, determine the correct token program for this mint
       const tokenProgramId = await this.getTokenProgramId(mintAddress);
-      
+
       // Fetch mint info with the correct token program
-      const mintInfo = await getMint(this.connection, mintAddress, undefined, tokenProgramId);
+      const mintInfo = await getMint(
+        this.connection,
+        mintAddress,
+        undefined,
+        tokenProgramId
+      );
       const decimals = mintInfo.decimals;
-      
-      // Cache and return the actual decimals from blockchain
-      this.tokenDecimalsCache.set(key, decimals);
-      this.logger.log(`Fetched decimals from blockchain for ${key}: ${decimals} (token program: ${tokenProgramId.toBase58()})`);
+
+      this.logger.log(
+        `Fetched decimals from blockchain for ${key}: ${decimals} (token program: ${tokenProgramId.toBase58()})`
+      );
       return decimals;
     } catch (error) {
       this.logger.warn(
-        `Could not fetch decimals for ${key} from blockchain: ${error instanceof Error ? error.message : String(error)}, defaulting to 6`
+        `Could not fetch decimals for ${key} from blockchain: ${
+          error instanceof Error ? error.message : String(error)
+        }, trying asset allocation database`
       );
-      // Only cache the default if we're sure it's a permanent failure
-      // Don't cache temporary failures to allow retry
-      this.tokenDecimalsCache.set(key, 6);
-      return 6;
+
+      // Fallback to asset allocation database (mainnet)
+      try {
+        const assetAllocation =
+          await this.assetAllocationService.findByMintAddressAndNetwork(
+            key,
+            NetworkType.MAINNET
+          );
+        const decimals = assetAllocation.decimals;
+        this.logger.log(
+          `Fetched decimals from asset allocation database for ${key}: ${decimals}`
+        );
+        return decimals;
+      } catch (dbError) {
+        this.logger.warn(
+          `Could not fetch decimals for ${key} from asset allocation database: ${
+            dbError instanceof Error ? dbError.message : String(dbError)
+          }, defaulting to 6`
+        );
+        return 6;
+      }
     }
   }
 
@@ -338,25 +374,31 @@ export class ChartsService {
 
     while (retryCount <= maxRetries) {
       try {
-        const response = await fetch(url);
-        
+        const headers: any = {};
+        if (this.JUPITER_API_KEY) {
+          headers["x-api-key"] = this.JUPITER_API_KEY;
+        }
+        const response = await fetch(url, { headers });
+
         if (response.status === 429) {
           // Rate limited - wait with exponential backoff
           // Calculate delay based on current retry count (before incrementing)
           const delayMs = baseDelay * Math.pow(2, retryCount);
-          
+
           if (retryCount >= maxRetries) {
             this.logger.error("Max retries reached for Jupiter price fetch");
             return {};
           }
-          
+
           await this.delay(delayMs);
           retryCount++;
           continue;
         }
 
         if (!response.ok) {
-          throw new Error(`Failed to fetch prices: ${response.status} ${response.statusText}`);
+          throw new Error(
+            `Failed to fetch prices: ${response.status} ${response.statusText}`
+          );
         }
 
         const data = (await response.json()) as Record<
@@ -374,13 +416,18 @@ export class ChartsService {
         if (retryCount < maxRetries) {
           const delayMs = baseDelay * Math.pow(2, retryCount);
           this.logger.warn(
-            `Error fetching Jupiter prices (attempt ${retryCount + 1}/${maxRetries + 1}), retrying after ${delayMs}ms:`,
+            `Error fetching Jupiter prices (attempt ${retryCount + 1}/${
+              maxRetries + 1
+            }), retrying after ${delayMs}ms:`,
             error
           );
           await this.delay(delayMs);
           retryCount++;
         } else {
-          this.logger.error("Error fetching Jupiter prices after all retries:", error);
+          this.logger.error(
+            "Error fetching Jupiter prices after all retries:",
+            error
+          );
           return {};
         }
       }
@@ -416,19 +463,24 @@ export class ChartsService {
         JSON.stringify(vaultAccount, null, 2)
       );
 
-
-    
-
       // Log underlying asset balances
       this.logger.log(`\n🏦 Underlying Assets:`);
-      const pricedAssets: { mint: PublicKey; amountTokens: number; decimals: number }[] = [];
+      const pricedAssets: {
+        mint: PublicKey;
+        amountTokens: number;
+        decimals: number;
+      }[] = [];
       for (let i = 0; i < vaultAccount.underlyingAssets.length; i++) {
         const asset = vaultAccount.underlyingAssets[i];
-        if (asset.mintAddress.toBase58() !== "11111111111111111111111111111111") {
+        if (
+          asset.mintAddress.toBase58() !== "11111111111111111111111111111111"
+        ) {
           this.logger.log(`  Asset ${i}:`);
           this.logger.log(`    Mint: ${asset.mintAddress.toBase58()}`);
           this.logger.log(
-            `    Allocation: ${asset.mintBps} bps (${(asset.mintBps / 100).toFixed(2)}%)`
+            `    Allocation: ${asset.mintBps} bps (${(
+              asset.mintBps / 100
+            ).toFixed(2)}%)`
           );
 
           // Get token account balance
@@ -436,9 +488,11 @@ export class ChartsService {
           let decimals = 6; // Default fallback
           try {
             // First, determine the correct token program for this mint
-            const tokenProgramId = await this.getTokenProgramId(asset.mintAddress);
+            const tokenProgramId = await this.getTokenProgramId(
+              asset.mintAddress
+            );
             this.logger.log(`    Token Program: ${tokenProgramId.toBase58()}`);
-            
+
             const tokenAccount = await getAssociatedTokenAddress(
               asset.mintAddress,
               vault,
@@ -446,14 +500,23 @@ export class ChartsService {
               tokenProgramId,
               ASSOCIATED_TOKEN_PROGRAM_ID
             );
-            this.logger.log(`    Token Account (ATA): ${tokenAccount.toBase58()}`);
-            
-            const balance = await getAccount(this.connection, tokenAccount, undefined, tokenProgramId);
+            this.logger.log(
+              `    Token Account (ATA): ${tokenAccount.toBase58()}`
+            );
+
+            const balance = await getAccount(
+              this.connection,
+              tokenAccount,
+              undefined,
+              tokenProgramId
+            );
             // Get actual token decimals from blockchain (matching Solscan)
             decimals = await this.getTokenDecimals(asset.mintAddress);
             amountTokens = Number(balance.amount) / Math.pow(10, decimals);
             this.logger.log(
-              `    Balance: ${balance.amount.toString()} (${amountTokens.toFixed(decimals)} tokens, ${decimals} decimals)`
+              `    Balance: ${balance.amount.toString()} (${amountTokens.toFixed(
+                decimals
+              )} tokens, ${decimals} decimals)`
             );
             this.logger.log("balance", balance);
           } catch (e: any) {
@@ -471,9 +534,13 @@ export class ChartsService {
               // Keep default 6 if decimals fetch also fails
             }
           }
-          
+
           // Always add the asset to pricedAssets with its decimals, even if balance is 0
-          pricedAssets.push({ mint: asset.mintAddress, amountTokens, decimals });
+          pricedAssets.push({
+            mint: asset.mintAddress,
+            amountTokens,
+            decimals,
+          });
         }
       }
       let totalUsd = 0;
@@ -483,23 +550,36 @@ export class ChartsService {
         const mintsForPricing = pricedAssets.map((a) => a.mint);
         const priceMap = await this.fetchJupiterPrices(mintsForPricing);
 
-        
-        this.logger.log(`\n💵 USD Valuations (Jupiter Prices - excluding stablecoin):`);
+        this.logger.log(
+          `\n💵 USD Valuations (Jupiter Prices - excluding stablecoin):`
+        );
         for (const { mint, amountTokens, decimals } of pricedAssets) {
           const mintStr = mint.toBase58();
           const price = Number(priceMap[mintStr] || 0);
           const usdValue = amountTokens * price;
           totalUsd += usdValue;
           this.logger.log(
-            `  ${mintStr}: ${amountTokens.toFixed(decimals)} tokens (${decimals} decimals) × $${price.toFixed(6)} = $${usdValue.toFixed(6)}`
+            `  ${mintStr}: ${amountTokens.toFixed(
+              decimals
+            )} tokens (${decimals} decimals) × $${price.toFixed(
+              6
+            )} = $${usdValue.toFixed(6)}`
           );
         }
-        this.logger.log(`\n🧮 Total Portfolio Value (excluding stablecoin): $${totalUsd.toFixed(6)}`);
+        this.logger.log(
+          `\n🧮 Total Portfolio Value (excluding stablecoin): $${totalUsd.toFixed(
+            6
+          )}`
+        );
         totalUsdInLamports = Math.round(totalUsd * 1_000_000);
-        this.logger.log(`💰 Total Portfolio Value in Lamports (6 decimals): ${totalUsdInLamports.toLocaleString()} lamports`);
+        this.logger.log(
+          `💰 Total Portfolio Value in Lamports (6 decimals): ${totalUsdInLamports.toLocaleString()} lamports`
+        );
       } catch (err) {
         this.logger.warn(
-          `Failed to fetch Jupiter prices or compute USD values: ${String((err as any)?.message || err)}`
+          `Failed to fetch Jupiter prices or compute USD values: ${String(
+            (err as any)?.message || err
+          )}`
         );
       }
       this.logger.log("totalUsdInLamports", totalUsdInLamports);
@@ -1502,7 +1582,12 @@ export class ChartsService {
 
       try {
         // Get token account balance
-        const accountInfo = await getAccount(this.connection, tokenAccount, undefined, tokenProgramId);
+        const accountInfo = await getAccount(
+          this.connection,
+          tokenAccount,
+          undefined,
+          tokenProgramId
+        );
         const balance = Number(accountInfo.amount);
         const balanceFormatted = balance / Math.pow(10, decimals);
 

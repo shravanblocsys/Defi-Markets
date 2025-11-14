@@ -33,7 +33,16 @@ export class PatchProfilePayload {
    */
   @ApiProperty({ required: false })
   @IsOptional()
-  @IsAlphanumeric()
+  @ValidateIf(
+    (o) =>
+      o.username !== undefined &&
+      o.username !== null &&
+      typeof o.username === "string" &&
+      o.username.trim() !== ""
+  )
+  @IsAlphanumeric(undefined, {
+    message: "Username must contain only alphanumeric characters",
+  })
   username?: string;
 
   /**

@@ -9,6 +9,7 @@ import {
   SystemProgram,
   SYSVAR_RENT_PUBKEY,
   SendTransactionError,
+  ComputeBudgetProgram,
 } from "@solana/web3.js";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
@@ -28,7 +29,9 @@ interface WalletProvider {
     transaction: Transaction | VersionedTransaction,
     connection: Connection
   ) => Promise<string>;
-  signTransaction: (transaction: Transaction | VersionedTransaction) => Promise<Transaction | VersionedTransaction>;
+  signTransaction: (
+    transaction: Transaction | VersionedTransaction
+  ) => Promise<Transaction | VersionedTransaction>;
 }
 
 export const useContract = () => {
@@ -282,6 +285,7 @@ export function useVaultCreation() {
         // );
 
         // Create vault using the program method exactly like script_min.ts
+        // Set compute unit limit to 400,000 to handle complex vault creation with many assets
         const tx = await (program as any).methods
           .createVault(vaultName, vaultSymbol, underlyingAssets, managementFees)
           .accountsStrict({
@@ -297,6 +301,9 @@ export function useVaultCreation() {
             systemProgram: SystemProgram.programId,
             rent: SYSVAR_RENT_PUBKEY,
           })
+          .preInstructions([
+            ComputeBudgetProgram.setComputeUnitLimit({ units: 400000 }),
+          ])
           .rpc();
 
         // console.log("✅ Vault created! tx:", tx, "vault:", vaultPda.toBase58());

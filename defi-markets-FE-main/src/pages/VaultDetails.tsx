@@ -299,18 +299,16 @@ const VaultDetails = () => {
       // Refresh user-specific data
       await fetchUserDeposits(id);
 
-      // Refresh vault-specific data (including fees from API)
-      await Promise.all([
-        fetchVaultInsights(id),
-        fetchVaultPortfolio(id),
-        fetchVaultDepositors(id),
-        fetchVaultActivity(
-          id,
-          activityPagination.currentPage,
-          activityPagination.itemsPerPage
-        ),
-        fetchVaultFees(id), // Refresh fees from API as well
-      ]);
+      // Refresh vault-specific data (including fees from API) - sequential to avoid 504 timeout
+      await fetchVaultInsights(id);
+      await fetchVaultPortfolio(id);
+      await fetchVaultDepositors(id);
+      await fetchVaultActivity(
+        id,
+        activityPagination.currentPage,
+        activityPagination.itemsPerPage
+      );
+      await fetchVaultFees(id); // Refresh fees from API as well
 
       // Refresh vault valuation (GAV/NAV)
       if (refetchValuation) {
@@ -984,18 +982,16 @@ const VaultDetails = () => {
           setDepositStepIndex(5);
           await delay(1000); // Longer delay to show the final step
 
-          // Refresh on-chain details (fees and user deposits) and API data in parallel
+          // Refresh on-chain details (fees and user deposits) and API data sequentially to avoid 504 timeout
           const [fPDA] = PublicKey.findProgramAddressSync(
             [Buffer.from("factory_v2")],
             VAULT_FACTORY_PROGRAM_ID
           );
           
-          // Refresh blockchain data and API data in parallel for faster updates
-          await Promise.all([
-            getVaultFees(fPDA, vault.vaultIndex),
-            getUserDepositDetails(fPDA, vault.vaultIndex),
-            refreshAllData(), // This includes API fees refresh
-          ]);
+          // Refresh blockchain data and API data sequentially
+          await getVaultFees(fPDA, vault.vaultIndex);
+          await getUserDepositDetails(fPDA, vault.vaultIndex);
+          await refreshAllData(); // This includes API fees refresh
 
           // Additional delay to ensure all state updates are reflected in UI
           await delay(500);
@@ -1024,12 +1020,10 @@ const VaultDetails = () => {
             VAULT_FACTORY_PROGRAM_ID
           );
           
-          // Refresh both blockchain and API data
-          await Promise.all([
-            getVaultFees(fPDA, vault.vaultIndex),
-            getUserDepositDetails(fPDA, vault.vaultIndex),
-            refreshAllData(),
-          ]);
+          // Refresh both blockchain and API data sequentially to avoid 504 timeout
+          await getVaultFees(fPDA, vault.vaultIndex);
+          await getUserDepositDetails(fPDA, vault.vaultIndex);
+          await refreshAllData();
         } catch (refreshError) {
           console.error(
             "❌ Error refreshing data after deposit (swap failed):",
@@ -1260,11 +1254,9 @@ const VaultDetails = () => {
       }
       setError(null);
 
-      // Fetch vault details and insights in parallel (portfolio deferred until tab click)
-      const [vaultResponse] = await Promise.all([
-        vaultsApi.getById(id),
-        fetchVaultInsights(id),
-      ]);
+      // Fetch vault details and insights sequentially to avoid 504 timeout
+      const vaultResponse = await vaultsApi.getById(id);
+      await fetchVaultInsights(id);
 
       if (vaultResponse.status === "success" && vaultResponse.data) {
         // Verify that the returned vault matches the requested ID
@@ -1784,18 +1776,16 @@ const VaultDetails = () => {
         setRedeemStepIndex(5);
         await delay(1000); // Longer delay to show the final step
 
-        // Refresh on-chain details (fees and user deposits) and API data in parallel
+        // Refresh on-chain details (fees and user deposits) and API data sequentially to avoid 504 timeout
         const [fPDA] = PublicKey.findProgramAddressSync(
           [Buffer.from("factory_v2")],
           VAULT_FACTORY_PROGRAM_ID
         );
         
-        // Refresh blockchain data and API data in parallel for faster updates
-        await Promise.all([
-          getVaultFees(fPDA, vault.vaultIndex),
-          getUserDepositDetails(fPDA, vault.vaultIndex),
-          refreshAllData(), // This includes API fees refresh
-        ]);
+        // Refresh blockchain data and API data sequentially
+        await getVaultFees(fPDA, vault.vaultIndex);
+        await getUserDepositDetails(fPDA, vault.vaultIndex);
+        await refreshAllData(); // This includes API fees refresh
 
         // Additional delay to ensure all state updates are reflected in UI
         await delay(500);

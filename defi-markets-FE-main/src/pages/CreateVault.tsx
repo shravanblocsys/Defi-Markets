@@ -468,6 +468,17 @@ const CreateVault = () => {
     mintAddress?: string;
     logoUrl?: string;
   }) => {
+    // Check if maximum assets limit (15) is reached
+    if (assets.length >= 15) {
+      toast({
+        title: "Maximum Assets Reached",
+        description:
+          "You can add at most 15 assets to a vault. Please remove an asset before adding a new one.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     if (!assets.find((asset) => asset.symbol === assetToAdd.symbol)) {
       // Calculate how much allocation to give to the new asset
       // If current total is 100%, reduce existing assets proportionally
@@ -799,13 +810,13 @@ const CreateVault = () => {
       });
     } catch (error) {
       console.error("Failed to create vault:", error);
-      
+
       // Detect insufficient SOL balance errors
       let errorMessage = "Failed to create vault";
       if (error instanceof Error) {
         const errorStr = error.message.toLowerCase();
         const errorStringified = JSON.stringify(error).toLowerCase();
-        
+
         // Check for various insufficient funds error patterns
         if (
           errorStr.includes("insufficient funds") ||
@@ -819,14 +830,19 @@ const CreateVault = () => {
           errorStringified.includes("insufficient sol") ||
           errorStringified.includes("0x1") // Solana error code for insufficient funds
         ) {
-          errorMessage = "Insufficient SOL balance. Please ensure you have enough SOL to cover transaction fees (typically 0.064 - 0.1 SOL) in addition to the 10 USDC vault creation fee.";
-        } else if (errorStr.includes("user rejected") || errorStr.includes("user cancelled")) {
-          errorMessage = "Transaction was cancelled. Please try again when ready.";
+          errorMessage =
+            "Insufficient SOL balance. Please ensure you have enough SOL to cover transaction fees (typically 0.064 - 0.1 SOL) in addition to the 10 USDC vault creation fee.";
+        } else if (
+          errorStr.includes("user rejected") ||
+          errorStr.includes("user cancelled")
+        ) {
+          errorMessage =
+            "Transaction was cancelled. Please try again when ready.";
         } else {
           errorMessage = error.message;
         }
       }
-      
+
       setDeployError(errorMessage);
 
       toast({
@@ -1503,16 +1519,28 @@ const CreateVault = () => {
                   <div className="flex items-center justify-between">
                     <h3 className="text-lg sm:text-xl font-semibold font-architekt">
                       Add More Assets
+                      {assets.length >= 15 && (
+                        <span className="ml-2 text-sm text-muted-foreground font-normal">
+                          (Maximum 15 assets reached)
+                        </span>
+                      )}
                     </h3>
                     <Button
                       variant="outline"
                       onClick={() => setShowAssetPopup(true)}
                       className="font-architekt"
+                      disabled={assets.length >= 15}
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Browse Assets
                     </Button>
                   </div>
+                  {assets.length >= 15 && (
+                    <p className="text-xs text-muted-foreground font-architekt">
+                      You have reached the maximum limit of 15 assets. Remove an
+                      asset to add a new one.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col sm:flex-row justify-between gap-3 sm:gap-0">
