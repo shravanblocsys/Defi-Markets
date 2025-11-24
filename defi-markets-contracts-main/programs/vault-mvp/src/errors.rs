@@ -33,4 +33,6 @@ pub enum ErrorCode {
     InsufficientVaultTokens,
     #[msg("Insufficient funds")]
     InsufficientFunds,
+    #[msg("Invalid metadata program")]
+    InvalidMetadataProgram,
 }

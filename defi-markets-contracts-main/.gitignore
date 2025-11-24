@@ -7,3 +7,7 @@ test-ledger
 .yarn
 keypairs/*
 .env
+sample/node_modules
+sample/dist
+sample/build
+sample/package-lock.json

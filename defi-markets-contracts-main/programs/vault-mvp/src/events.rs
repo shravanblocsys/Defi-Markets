@@ -98,3 +98,16 @@ pub struct AccruedFeesDistributed {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct ManagementFeeClaimed {
+    pub vault: Pubkey,
+    pub creator: Pubkey,
+    pub vault_index: u32,
+    pub total_accrued_fees_usdc: u64,
+    pub creator_share_usdc: u64,
+    pub platform_share_usdc: u64,
+    pub vault_creator_fee_ratio_bps: u16,
+    pub platform_fee_ratio_bps: u16,
+    pub timestamp: i64,
+}
+

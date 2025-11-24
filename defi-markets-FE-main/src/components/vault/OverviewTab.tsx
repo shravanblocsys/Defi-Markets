@@ -10,6 +10,7 @@ import {
   ExternalLink,
   ChevronDown,
   Info,
+  BadgeCheck,
 } from "lucide-react";
 import type { Vault } from "@/types/store";
 import VaultChart from "@/components/ui/vault-chart";
@@ -31,6 +32,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatCurrency } from "@/lib/helpers";
 import FeesTab from "./FeesTab";
 import { RefreshCw } from "lucide-react";
+import checkIcon from "@/assets/check.png";
+import { Buffer } from "buffer";
+import { VAULT_FACTORY_PROGRAM_ID } from "@/components/solana/programIds/programids";
+import * as anchor from "@coral-xyz/anchor";
 
 // Helper function to format TVL/NAV with 4 decimal places
 const formatTVL = (value: number): string => {
@@ -122,6 +127,7 @@ interface OverviewTabProps {
   userAddress?: string;
   connection?: Connection;
   totalSupply?: number;
+  onRefreshUserBalance?: () => Promise<void>;
 }
 
 const OverviewTab = ({
@@ -164,6 +170,7 @@ const OverviewTab = ({
   userAddress,
   connection,
   totalSupply,
+  onRefreshUserBalance,
 }: OverviewTabProps) => {
   console.log("totalSupply", totalSupply);
   console.log("vault.totalSupply", vault.totalSupply);
@@ -191,6 +198,8 @@ const OverviewTab = ({
     gav: number;
   } | null>(null);
   const [userUSDCBalance, setUserUSDCBalance] = useState<number>(0);
+  const [vaultUSDCBalance, setVaultUSDCBalance] = useState<number>(0);
+  const [vaultUSDCBalanceLoading, setVaultUSDCBalanceLoading] = useState(false);
   const [allTimeframesData, setAllTimeframesData] = useState<{
     "1D": Array<{
       timestamp: string;
@@ -345,6 +354,64 @@ const OverviewTab = ({
     }
   }, [userAddress, connection]);
 
+  // Fetch vault USDC balance
+  useEffect(() => {
+    const fetchVaultUSDCBalance = async () => {
+      if (!vaultIndex || !connection) {
+        return;
+      }
+
+      setVaultUSDCBalanceLoading(true);
+      try {
+        // Derive vault PDA
+        const [factoryPDA] = PublicKey.findProgramAddressSync(
+          [Buffer.from("factory_v2")],
+          VAULT_FACTORY_PROGRAM_ID
+        );
+        const [vaultPDA] = PublicKey.findProgramAddressSync(
+          [
+            Buffer.from("vault"),
+            factoryPDA.toBuffer(),
+            new anchor.BN(vaultIndex).toArrayLike(Buffer, "le", 4),
+          ],
+          VAULT_FACTORY_PROGRAM_ID
+        );
+
+        // Derive vault stablecoin account PDA
+        const [vaultStablecoinAccountPDA] = PublicKey.findProgramAddressSync(
+          [Buffer.from("vault_stablecoin_account"), vaultPDA.toBuffer()],
+          VAULT_FACTORY_PROGRAM_ID
+        );
+
+        // Get the token account balance
+        const tokenAccount = await getAccount(
+          connection,
+          vaultStablecoinAccountPDA
+        );
+
+        // Get USDC mint info to get decimals
+        const usdcMint = TOKEN_MINTS.MAINNET.USDC;
+        const mintInfo = await getMint(connection, usdcMint);
+
+        // Convert balance from smallest unit to base10
+        const balance =
+          Number(tokenAccount.amount) / Math.pow(10, mintInfo.decimals);
+
+        setVaultUSDCBalance(balance);
+      } catch (error) {
+        console.error("Error fetching vault USDC balance:", error);
+        // If token account doesn't exist, balance is 0
+        setVaultUSDCBalance(0);
+      } finally {
+        setVaultUSDCBalanceLoading(false);
+      }
+    };
+
+    if (vaultIndex && connection) {
+      fetchVaultUSDCBalance();
+    }
+  }, [vaultIndex, connection, refreshTrigger]);
+
   return (
     <div className="space-y-6 sm:space-y-8">
       {/* Bento Grid */}
@@ -481,13 +548,42 @@ const OverviewTab = ({
               <CardContent>
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium truncate">
+                        {typeof vault.creator === "object" &&
+                        vault.creator &&
+                        "name" in vault.creator
+                          ? (vault.creator as { name?: string }).name ||
+                            "Unknown"
+                          : "Unknown"}
+                      </p>
                       {typeof vault.creator === "object" &&
-                      vault.creator &&
-                      "name" in vault.creator
-                        ? (vault.creator as { name?: string }).name || "Unknown"
-                        : "Unknown"}
-                    </p>
+                        vault.creator &&
+                        (vault.creator as any).twitter_username && (
+                          <a
+                            href={`https://x.com/${
+                              (vault.creator as any).twitter_username
+                            }`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="relative flex items-center justify-center hover:opacity-80 transition-opacity cursor-pointer"
+                            title={`View @${
+                              (vault.creator as any).twitter_username
+                            } on X`}
+                          >
+                            <BadgeCheck
+                              className="w-5 h-5 flex-shrink-0 drop-shadow-lg"
+                              strokeWidth={2.5}
+                              fill="rgb(59 130 246)"
+                            />
+                            {/* <img
+                              src={checkIcon}
+                              alt="Verified"
+                              className="w-5 h-5 flex-shrink-0 drop-shadow-lg"
+                            /> */}
+                          </a>
+                        )}
+                    </div>
                     <p className="text-xs text-muted-foreground font-mono truncate">
                       {vault.creatorAddress
                         ? `${vault.creatorAddress.slice(
@@ -625,6 +721,47 @@ const OverviewTab = ({
                       </div>
                     </div>
                   ))}
+
+                  {/* Separator */}
+                  <div className="border-t border-border/50 my-2"></div>
+
+                  {/* USDC Reserve Balance */}
+                  <div className="flex items-center justify-between p-3 rounded-lg bg-surface-2/50">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full overflow-hidden bg-surface-2 flex items-center justify-center">
+                        <img
+                          src="https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png"
+                          alt="USDC"
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.style.display = "none";
+                            target.nextElementSibling?.classList.remove(
+                              "hidden"
+                            );
+                          }}
+                        />
+                        <div className="w-6 h-6 bg-primary/20 rounded-full flex items-center justify-center hidden">
+                          <span className="text-xs font-bold text-primary">
+                            U
+                          </span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="font-medium text-foreground">USDC</p>
+                        <p className="text-xs text-muted-foreground">
+                          Reserve Balance
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-foreground">
+                        {vaultUSDCBalanceLoading
+                          ? "Loading..."
+                          : vaultUSDCBalance.toFixed(6)}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <p className="text-muted-foreground text-center py-4">
@@ -841,12 +978,31 @@ const OverviewTab = ({
                             variant="outline"
                             size="sm"
                             className="absolute right-1 top-1/2 -translate-y-1/2 h-6 px-2 text-xs"
-                            onClick={() =>
-                              setRedeemAmount &&
-                              setRedeemAmount(
-                                Number(userDepositAmount || 0).toFixed(4)
-                              )
-                            }
+                            onClick={async () => {
+                              if (setRedeemAmount) {
+                                // Refresh balance from contract first to get latest value
+                                if (onRefreshUserBalance) {
+                                  try {
+                                    await onRefreshUserBalance();
+                                    // Small delay to ensure state updates
+                                    await new Promise((resolve) =>
+                                      setTimeout(resolve, 100)
+                                    );
+                                  } catch (error) {
+                                    console.error(
+                                      "Error refreshing balance:",
+                                      error
+                                    );
+                                    // Continue with current value if refresh fails
+                                  }
+                                }
+
+                                // Use the refreshed value (or current if refresh failed)
+                                // Use exact value from contract without additional truncation
+                                const maxAmount = userDepositAmount || 0;
+                                setRedeemAmount(maxAmount.toFixed(6));
+                              }
+                            }}
                           >
                             Max
                           </Button>

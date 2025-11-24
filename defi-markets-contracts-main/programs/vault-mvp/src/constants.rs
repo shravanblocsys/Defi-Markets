@@ -16,7 +16,13 @@ pub const MIN_UNDERLYING_ASSETS: usize = 1; // Minimum number of underlying asse
 pub const MAX_UNDERLYING_ASSETS: usize = 240; // Practical limit due to Solana's reallocation limit (10,240 bytes)
 pub const MAX_ACCOUNT_SIZE: usize = 10_240_000; // Solana's maximum account size limit (10MB)
 pub const MAX_VAULT_NAME_LENGTH: usize = 50;
-pub const MAX_VAULT_SYMBOL_LENGTH: usize = 10;
+pub const MAX_VAULT_SYMBOL_LENGTH: usize = 30;
 
 // Max serialized Jupiter instruction length to store in on-chain buffer
 pub const JUP_IX_MAX_LEN: usize = 1024;
+
+// Token Program IDs (hardcoded for validation)
+use anchor_lang::solana_program::pubkey;
+
+pub const TOKEN_PROGRAM_ID: anchor_lang::prelude::Pubkey = pubkey!("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+pub const TOKEN_2022_PROGRAM_ID: anchor_lang::prelude::Pubkey = pubkey!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb");

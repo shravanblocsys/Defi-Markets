@@ -59,58 +59,6 @@ export class CronJobService implements OnModuleInit {
   }
 
   /**
-   * Register cron from environment at runtime
-   */
-  onModuleInit() {
-    // Register price fetch cron job
-    const priceExpression =
-      this.configService.get("CRON_JOB_INTERVAL") || "*/15 * * * * *";
-
-    const priceJob = new CronJob(priceExpression, async () => {
-      try {
-        await this.fetchAndStoreTokenPrices();
-      } catch (err) {
-        this.logger.log("Price fetch cron job execution failed", err);
-      }
-    });
-
-    // Replace existing price job if exists
-    try {
-      this.schedulerRegistry.deleteCronJob("price-fetch");
-    } catch (_) {}
-
-    this.schedulerRegistry.addCronJob("price-fetch", priceJob);
-    priceJob.start();
-
-    this.logger.log(
-      `Registered price fetch cron with expression: ${priceExpression}`
-    );
-
-    // Register vault fees calculation cron job (runs at midnight every day)
-    const vaultFeesExpression = "0 0 0 * * *"; // At midnight every day
-
-    const vaultFeesJob = new CronJob(vaultFeesExpression, async () => {
-      try {
-        await this.calculateVaultManagementFees();
-      } catch (err) {
-        this.logger.log("Vault fees calculation cron job execution failed", err);
-      }
-    });
-
-    // Replace existing vault fees job if exists
-    try {
-      this.schedulerRegistry.deleteCronJob("vault-fees-calculation");
-    } catch (_) {}
-
-    this.schedulerRegistry.addCronJob("vault-fees-calculation", vaultFeesJob);
-    vaultFeesJob.start();
-
-    this.logger.log(
-      `Registered vault fees calculation cron with expression: ${vaultFeesExpression}`
-    );
-  }
-
-  /**
    * Cron job to fetch and store token prices
    * Schedule is controlled by `CRON_JOB_INTERVAL` (default: "0 *\/15 * * * *" — every 15 minutes)
    * This ensures we have historical price data for charts

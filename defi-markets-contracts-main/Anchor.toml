@@ -13,9 +13,7 @@ url = "https://api.apr.dev"
 
 [provider]
 cluster = "devnet"
-# For Ledger wallet, use: wallet = "usb://ledger"
-# For file-based keypair, use: wallet = "keypairs/admin-keypair.json"
-wallet = "usb://ledger"
+wallet = "./keypairs/admin-keypair.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

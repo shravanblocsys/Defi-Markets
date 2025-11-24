@@ -8,6 +8,109 @@
   },
   "instructions": [
     {
+      "name": "claim_management_fee",
+      "docs": [
+        "Claim management fees directly by the vault creator (decentralized)",
+        "Allows DTF creators to claim their accrued management fees without relying on admin/keeper",
+        "Fees are distributed as vault tokens according to factory-configured ratios (creator share + platform share)",
+        "This aligns fee recipients with vault performance by giving them vault shares",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)"
+      ],
+      "discriminator": [50, 47, 37, 27, 210, 37, 109, 118],
+      "accounts": [
+        {
+          "name": "creator",
+          "docs": ["Vault creator claiming their management fees"],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "factory",
+          "docs": ["Factory PDA - seeds: [\"factory_v2\"]"],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [102, 97, 99, 116, 111, 114, 121, 95, 118, 50]
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault",
+          "docs": [
+            "Vault PDA - seeds: [\"vault\", factory.key(), vault_index]"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116]
+              },
+              {
+                "kind": "account",
+                "path": "factory"
+              },
+              {
+                "kind": "arg",
+                "path": "vault_index"
+              }
+            ]
+          }
+        },
+        {
+          "name": "vault_mint",
+          "docs": ["Vault token mint (for minting fee shares)"],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [118, 97, 117, 108, 116, 95, 109, 105, 110, 116]
+              },
+              {
+                "kind": "account",
+                "path": "vault"
+              }
+            ]
+          }
+        },
+        {
+          "name": "creator_vault_account",
+          "docs": [
+            "Creator's vault token account (receives vault creator share)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "fee_recipient_vault_account",
+          "docs": [
+            "Platform fee recipient's vault token account (receives platform share)"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "vault_index",
+          "type": "u32"
+        },
+        {
+          "name": "share_price",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "collect_weekly_management_fees",
       "docs": [
         "Collect accrued management fees from vault USDC and distribute 70/30"
@@ -203,6 +306,15 @@
           "writable": true
         },
         {
+          "name": "token_metadata_program",
+          "docs": ["Metaplex Token Metadata Program"]
+        },
+        {
+          "name": "metadata_account",
+          "docs": ["Token Metadata Account (PDA)"],
+          "writable": true
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -237,6 +349,10 @@
         {
           "name": "management_fees",
           "type": "u16"
+        },
+        {
+          "name": "metadata_uri",
+          "type": "string"
         }
       ]
     },
@@ -388,7 +504,8 @@
       "name": "distribute_accrued_fees",
       "docs": [
         "Distribute accrued management fees as vault tokens to vault creator and platform",
-        "This aligns fee recipients with vault performance by giving them vault shares"
+        "This aligns fee recipients with vault performance by giving them vault shares",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)"
       ],
       "discriminator": [205, 241, 193, 87, 26, 33, 131, 94],
       "accounts": [
@@ -477,6 +594,10 @@
         {
           "name": "vault_index",
           "type": "u32"
+        },
+        {
+          "name": "share_price",
+          "type": "u64"
         }
       ]
     },
@@ -701,7 +822,8 @@
       "name": "get_accrued_management_fees",
       "docs": [
         "Get and update accrued management fees for a vault",
-        "This function calculates newly accrued fees using live asset prices and balances"
+        "This function calculates newly accrued fees using live asset prices and balances",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)"
       ],
       "discriminator": [134, 145, 47, 94, 255, 206, 143, 195],
       "accounts": [
@@ -774,6 +896,10 @@
               }
             }
           }
+        },
+        {
+          "name": "share_price",
+          "type": "u64"
         }
       ],
       "returns": {
@@ -1293,17 +1419,30 @@
         },
         {
           "name": "vault_asset_account",
-          "docs": ["Source: vault's ATA for the asset"],
+          "docs": [
+            "Source: vault's ATA for the asset (supports both SPL Token and Token-2022)",
+            "We use AccountInfo to support both token program types"
+          ],
           "writable": true
         },
         {
           "name": "user_asset_account",
-          "docs": ["Destination: user's ATA for the asset"],
+          "docs": [
+            "Destination: user's ATA for the asset (supports both SPL Token and Token-2022)",
+            "We use AccountInfo to support both token program types"
+          ],
           "writable": true
         },
         {
+          "name": "mint",
+          "docs": [
+            "Mint of the underlying asset (required for Token-2022 transfer_checked)",
+            "We use AccountInfo here because we need to support both SPL Token and Token-2022 mints."
+          ]
+        },
+        {
           "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+          "docs": ["Token program (supports both SPL Token and Token-2022)"]
         },
         {
           "name": "system_program",
@@ -1318,6 +1457,10 @@
         {
           "name": "amount",
           "type": "u64"
+        },
+        {
+          "name": "decimals",
+          "type": "u8"
         }
       ]
     }
@@ -1352,6 +1495,10 @@
     {
       "name": "FactoryInitialized",
       "discriminator": [20, 86, 103, 75, 20, 220, 162, 63]
+    },
+    {
+      "name": "ManagementFeeClaimed",
+      "discriminator": [204, 171, 65, 174, 132, 53, 99, 195]
     },
     {
       "name": "RedeemEvent",
@@ -1445,6 +1592,11 @@
       "code": 6014,
       "name": "InsufficientFunds",
       "msg": "Insufficient funds"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidMetadataProgram",
+      "msg": "Invalid metadata program"
     }
   ],
   "types": [
@@ -1943,6 +2095,50 @@
           },
           {
             "name": "Deprecated"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ManagementFeeClaimed",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_index",
+            "type": "u32"
+          },
+          {
+            "name": "total_accrued_fees_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "creator_share_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "platform_share_usdc",
+            "type": "u64"
+          },
+          {
+            "name": "vault_creator_fee_ratio_bps",
+            "type": "u16"
+          },
+          {
+            "name": "platform_fee_ratio_bps",
+            "type": "u16"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
           }
         ]
       }

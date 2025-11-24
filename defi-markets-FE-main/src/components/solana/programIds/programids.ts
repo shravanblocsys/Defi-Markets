@@ -11,6 +11,11 @@ export const ETF_VAULT_PROGRAM_ID = new PublicKey(
     "11111111111111111111111111111111"
 );
 
+// Metaplex Token Metadata Program ID
+export const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
+  "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+);
+
 // Common token mint addresses (Solana devnet/mainnet)
 export const TOKEN_MINTS = {
   // Devnet

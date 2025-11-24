@@ -100,6 +100,12 @@ export class ConfigService {
         // Vault Configuration
         MINI_DEPOSIT: joi.number().positive().optional(),
         MINI_REDEEM: joi.number().positive().optional(),
+
+        // Pinata Configuration
+        PINATA_API_KEY: joi.string().allow('').optional(),
+        PINATA_SECRET_KEY: joi.string().allow('').optional(),
+        PINATA_JWT_TOKEN: joi.string().allow('').optional(),
+        PINATA_GATEWAY_API: joi.string().allow('').optional(),
       })
       .unknown(true);
 

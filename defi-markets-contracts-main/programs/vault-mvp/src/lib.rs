@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("E3MqrfsTT6CydrPm5pxRwS2ynYUqaaDvEUBqYDBg69Su");
+declare_id!("BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB");
 
 // ---------- Module Declarations ----------
 pub mod constants;
@@ -58,8 +58,9 @@ pub mod vault_mvp {
         vault_symbol: String,
         underlying_assets: Vec<UnderlyingAsset>,
         management_fees: u16,
+        metadata_uri: String,
     ) -> Result<()> {
-        instructions::create_vault(ctx, vault_name, vault_symbol, underlying_assets, management_fees)
+        instructions::create_vault(ctx, vault_name, vault_symbol, underlying_assets, management_fees, metadata_uri)
     }
 
 
@@ -123,8 +124,9 @@ pub mod vault_mvp {
         ctx: Context<WithdrawUnderlyingToUser>,
         vault_index: u32,
         amount: u64,
+        decimals: u8,
     ) -> Result<()> {
-        instructions::withdraw_underlying_to_user(ctx, vault_index, amount)
+        instructions::withdraw_underlying_to_user(ctx, vault_index, amount, decimals)
     }
 
     /// Finalize redeem: burn tokens and settle fees/net USDC
@@ -165,21 +167,42 @@ pub mod vault_mvp {
 
     /// Get and update accrued management fees for a vault
     /// This function calculates newly accrued fees using live asset prices and balances
+    /// share_price: Current share price in raw stablecoin units per share (same format as deposit)
     pub fn get_accrued_management_fees<'info>(
         ctx: Context<'_, '_, 'info, 'info, GetAccruedManagementFees<'info>>,
         vault_index: u32,
         asset_prices: Vec<AssetPrice>,
+        share_price: u64,
     ) -> Result<AccruedManagementFees> {
-        instructions::get_accrued_management_fees(ctx, vault_index, asset_prices)
+        instructions::get_accrued_management_fees(ctx, vault_index, asset_prices, share_price)
     }
 
     /// Distribute accrued management fees as vault tokens to vault creator and platform
     /// This aligns fee recipients with vault performance by giving them vault shares
+    /// share_price: Current share price in raw stablecoin units per share (same format as deposit)
+    /// management_fees_amount: Total accrued management fees in USDC (raw units, 6 decimals) calculated off-chain
     pub fn distribute_accrued_fees(
         ctx: Context<DistributeAccruedFees>,
         vault_index: u32,
+        share_price: u64,
+        management_fees_amount: u64,
     ) -> Result<()> {
-        instructions::distribute_accrued_fees(ctx, vault_index)
+        instructions::distribute_accrued_fees(ctx, vault_index, share_price, management_fees_amount)
+    }
+
+    /// Claim management fees directly by the vault creator (decentralized)
+    /// Allows DTF creators to claim their accrued management fees without relying on admin/keeper
+    /// Fees are distributed as vault tokens according to factory-configured ratios (creator share + platform share)
+    /// This aligns fee recipients with vault performance by giving them vault shares
+    /// share_price: Current share price in raw stablecoin units per share (same format as deposit)
+    /// management_fees_amount: Total accrued management fees in USDC (raw units, 6 decimals) calculated off-chain
+    pub fn claim_management_fee(
+        ctx: Context<ClaimManagementFee>,
+        vault_index: u32,
+        share_price: u64,
+        management_fees_amount: u64,
+    ) -> Result<()> {
+        instructions::claim_management_fee(ctx, vault_index, share_price, management_fees_amount)
     }
 
 }

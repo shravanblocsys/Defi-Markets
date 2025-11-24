@@ -380,14 +380,3 @@ Public endpoints include (selection):
 Note: Earlier sections reference port 3000 from the original boilerplate. The current code boots on port 3400 while preserving earlier instructions for compatibility.
 
 ---
-
-### 📚 Module Docs
-
-- SIWX: `src/modules/siwx/README.md`, `SIWX_IMPLEMENTATION.md`
-- Helius Stream: `src/modules/helius-stream/README.md`
-- Fees Management: `src/modules/fees-management/README.md`
-- Wallet: `src/modules/wallet/README.md`
-- Vault Factory/Deposit: `VAULT_INTEGRATION_GUIDE.md`
-- Vault Management Fees Cron: `VAULT_MANAGEMENT_FEES_CRON.md`
-
----

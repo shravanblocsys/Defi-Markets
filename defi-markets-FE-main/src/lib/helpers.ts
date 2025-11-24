@@ -478,14 +478,235 @@ export const throttle = <T extends (...args: any[]) => any>(
 // ============================================================================
 
 /**
+ * Anchor error code to user-friendly message mapping
+ */
+const ANCHOR_ERROR_MESSAGES: Record<number, { title: string; description: string }> = {
+  6000: {
+    title: "Fees Too High",
+    description: "The management fee you specified exceeds the maximum allowed. Please reduce the fee and try again.",
+  },
+  6001: {
+    title: "Invalid Fee Range",
+    description: "The fee configuration is invalid. Please check your fee settings.",
+  },
+  6002: {
+    title: "Vault Name Too Long",
+    description: "The vault name exceeds the maximum allowed length. Please use a shorter name (typically 32 characters or less).",
+  },
+  6003: {
+    title: "Vault Symbol Too Long",
+    description: "The vault symbol exceeds the maximum allowed length. Please use a shorter symbol (typically 10 characters or less).",
+  },
+  6004: {
+    title: "Invalid Asset Configuration",
+    description: "The underlying assets configuration is invalid. Please ensure all assets have valid mint addresses and allocations.",
+  },
+  6005: {
+    title: "Account Size Exceeded",
+    description: "The account size exceeds the maximum allowed. Please reduce the number of assets or simplify the configuration.",
+  },
+  6006: {
+    title: "Invalid Management Fees",
+    description: "The management fees value is invalid. Please check your fee configuration.",
+  },
+  6007: {
+    title: "Invalid Allocation",
+    description: "The total asset allocation must equal exactly 100% (10000 basis points). Please adjust your allocations.",
+  },
+  6008: {
+    title: "Vault Not Found",
+    description: "The specified vault could not be found.",
+  },
+  6009: {
+    title: "Vault Not Active",
+    description: "The vault is not currently active.",
+  },
+  6010: {
+    title: "Invalid Amount",
+    description: "The specified amount is invalid. Please check your input.",
+  },
+  6011: {
+    title: "Factory Not Active",
+    description: "The vault factory is not currently active. Please try again later.",
+  },
+  6012: {
+    title: "Unauthorized Access",
+    description: "You do not have permission to perform this action.",
+  },
+  6013: {
+    title: "Insufficient Vault Tokens",
+    description: "You do not have enough vault tokens to complete this transaction.",
+  },
+  6014: {
+    title: "Insufficient Funds",
+    description: "You do not have sufficient funds to complete this transaction. Please ensure you have enough SOL for transaction fees and USDC for the vault creation fee.",
+  },
+  6015: {
+    title: "Invalid Metadata Program",
+    description: "The metadata program configuration is invalid. Please contact support.",
+  },
+};
+
+/**
+ * Parse Anchor error from error object
+ * @param error - Error object (can be AnchorError, Error, or any)
+ * @returns Parsed error information
+ */
+export interface ParsedError {
+  title: string;
+  description: string;
+  errorCode?: number;
+  errorName?: string;
+  isAnchorError: boolean;
+  originalError: unknown;
+}
+
+export const parseAnchorError = (error: unknown): ParsedError => {
+  const errorStr = JSON.stringify(error);
+  const errorLower = errorStr.toLowerCase();
+
+  // Try to extract Anchor error code and name
+  // Anchor errors typically have format: "AnchorError thrown in ... Error Code: ErrorName. Error Number: 6003."
+  const codeMatch = errorStr.match(/error number[:\s]+(\d+)/i) || 
+                    errorStr.match(/code[:\s]+(\d+)/i) ||
+                    errorStr.match(/(600\d+)/);
+  
+  const nameMatch = errorStr.match(/error code[:\s]+([a-z]+)/i) ||
+                    errorStr.match(/code[:\s]+([a-z]+)/i) ||
+                    errorStr.match(/(vaultSymbolTooLong|vaultNameTooLong|invalidBpsSum|feesTooHigh|invalidUnderlyingAssets|insufficientFunds|unauthorized|vaultNotFound|vaultNotActive|factoryNotActive|invalidAmount|insufficientVaultTokens|invalidManagementFees|invalidFeeRange|accountTooLarge|invalidMetadataProgram)/i);
+
+  let errorCode: number | undefined;
+  let errorName: string | undefined;
+
+  if (codeMatch) {
+    errorCode = parseInt(codeMatch[1], 10);
+  }
+
+  if (nameMatch) {
+    errorName = nameMatch[1];
+  }
+
+  // If we found an error code, try to get the user-friendly message
+  if (errorCode && ANCHOR_ERROR_MESSAGES[errorCode]) {
+    return {
+      title: ANCHOR_ERROR_MESSAGES[errorCode].title,
+      description: ANCHOR_ERROR_MESSAGES[errorCode].description,
+      errorCode,
+      errorName,
+      isAnchorError: true,
+      originalError: error,
+    };
+  }
+
+  // Check for common Solana/Anchor error patterns
+  if (errorLower.includes("anchorerror") || errorLower.includes("anchor error")) {
+    // Try to extract error message from Anchor error
+    const msgMatch = errorStr.match(/error message[:\s]+"([^"]+)"/i) ||
+                     errorStr.match(/msg[:\s]+"([^"]+)"/i);
+    
+    if (msgMatch) {
+      return {
+        title: "Vault Creation Failed",
+        description: msgMatch[1],
+        errorCode,
+        errorName,
+        isAnchorError: true,
+        originalError: error,
+      };
+    }
+
+    return {
+      title: "Vault Creation Failed",
+      description: "An error occurred while creating the vault on-chain. Please check your inputs and try again.",
+      errorCode,
+      errorName,
+      isAnchorError: true,
+      originalError: error,
+    };
+  }
+
+  // Check for insufficient funds errors
+  if (
+    errorLower.includes("insufficient funds") ||
+    errorLower.includes("insufficient sol") ||
+    errorLower.includes("account has insufficient funds") ||
+    errorLower.includes("not enough sol") ||
+    errorLower.includes("insufficient balance") ||
+    errorLower.includes("exceeded cus meter") ||
+    errorLower.includes("0x1")
+  ) {
+    return {
+      title: "Insufficient SOL Balance",
+      description: "Please ensure you have enough SOL to cover transaction fees (typically 0.064 - 0.1 SOL) in addition to the 10 USDC vault creation fee.",
+      isAnchorError: false,
+      originalError: error,
+    };
+  }
+
+  // Check for user rejection
+  if (
+    errorLower.includes("user rejected") ||
+    errorLower.includes("user cancelled") ||
+    errorLower.includes("transaction was cancelled")
+  ) {
+    return {
+      title: "Transaction Cancelled",
+      description: "The transaction was cancelled. Please try again when ready.",
+      isAnchorError: false,
+      originalError: error,
+    };
+  }
+
+  // Check for network errors
+  if (
+    errorLower.includes("network") ||
+    errorLower.includes("connection") ||
+    errorLower.includes("timeout") ||
+    errorLower.includes("fetch failed")
+  ) {
+    return {
+      title: "Network Error",
+      description: "A network error occurred. Please check your internet connection and try again.",
+      isAnchorError: false,
+      originalError: error,
+    };
+  }
+
+  // Default error handling
+  if (error instanceof Error) {
+    return {
+      title: "Vault Creation Failed",
+      description: error.message || "An unexpected error occurred while creating the vault.",
+      isAnchorError: false,
+      originalError: error,
+    };
+  }
+
+  if (typeof error === "string") {
+    return {
+      title: "Vault Creation Failed",
+      description: error,
+      isAnchorError: false,
+      originalError: error,
+    };
+  }
+
+  return {
+    title: "Vault Creation Failed",
+    description: "An unknown error occurred. Please try again or contact support if the issue persists.",
+    isAnchorError: false,
+    originalError: error,
+  };
+};
+
+/**
  * Get error message from error object
  * @param error - Error object
  * @returns Error message string
  */
 export const getErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return "An unknown error occurred";
+  const parsed = parseAnchorError(error);
+  return parsed.description;
 };
 
 /**

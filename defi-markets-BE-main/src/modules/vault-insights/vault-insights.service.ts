@@ -1057,7 +1057,10 @@ export class VaultInsightsService {
    * @returns Enriched vault data with TVL and APY
    */
   private async enrichVaultWithTvlAndApy(doc: any): Promise<any> {
-    const obj = typeof doc?.toObject === "function" ? doc.toObject() : doc;
+    const obj =
+      typeof doc?.toObject === "function"
+        ? doc.toObject({ virtuals: true })
+        : doc;
     const vaultAddress = obj.vaultAddress;
     const vaultId = obj._id;
 
@@ -1074,7 +1077,11 @@ export class VaultInsightsService {
         const sharePriceData = await this.chartsService.getVaultSharePrice(
           vaultId.toString()
         );
-        if (sharePriceData && sharePriceData.nav !== null && sharePriceData.nav !== undefined) {
+        if (
+          sharePriceData &&
+          sharePriceData.nav !== null &&
+          sharePriceData.nav !== undefined
+        ) {
           totalValueLocked = sharePriceData.nav; // NAV is already in USD (converted from lamports)
         }
       }
@@ -1185,7 +1192,8 @@ export class VaultInsightsService {
       const populateOptions = [
         {
           path: "creator",
-          select: "name email walletAddress socialLinks avatar",
+          select:
+            "name email walletAddress socialLinks avatar twitter_username",
         },
         {
           path: "underlyingAssets.assetAllocation",
@@ -1272,7 +1280,8 @@ export class VaultInsightsService {
       const populateOptions = [
         {
           path: "creator",
-          select: "name email walletAddress socialLinks avatar",
+          select:
+            "name email walletAddress socialLinks avatar twitter_username",
         },
         {
           path: "underlyingAssets.assetAllocation",

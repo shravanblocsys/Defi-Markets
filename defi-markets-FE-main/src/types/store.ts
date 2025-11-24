@@ -69,6 +69,7 @@ export interface VaultCreator {
   name: string;
   walletAddress: string;
   avatar?: string;
+  twitter_username?: string;
 }
 
 export interface Vault {

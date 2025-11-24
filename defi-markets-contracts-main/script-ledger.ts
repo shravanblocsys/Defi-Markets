@@ -423,7 +423,8 @@ async function createVault(factoryPDA: PublicKey) {
         vaultName,        // vault_name (randomly generated)
         vaultSymbol,      // vault_symbol (randomly generated)
         underlyingAssets,
-        200              // management_fees (2%) - within current factory limits
+        200,             // management_fees (2%) - within current factory limits
+        ""               // metadata_uri (IPFS URI) - TODO: Upload metadata to IPFS
       )
       .accountsStrict({
         admin: ledgerPublicKey!,

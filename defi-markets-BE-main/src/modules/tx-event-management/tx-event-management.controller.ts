@@ -15,7 +15,13 @@ import { UpdateVaultDepositDto } from "./dto/update-vault-deposit.dto";
 import { TxEventManagementService } from "./tx-event-management.service";
 import { SwapDto } from "./dto/swap.dto";
 import { RedeemSwapAdminDto } from "./dto/redeem-swap-admin.dto";
-import { ApiTags, ApiOperation, ApiResponse, ApiBody, ApiBearerAuth } from "@nestjs/swagger";
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBody,
+  ApiBearerAuth,
+} from "@nestjs/swagger";
 import { AuthenticatedRequest } from "../../utils/utils";
 import { AuthGuard } from "@nestjs/passport";
 
@@ -100,9 +106,14 @@ export class TxEventManagementController {
   @Post("redeem-swap")
   @UseGuards(RateLimitGuard)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: "Execute admin redeem swaps (underlying->USDC to vault PDA)" })
+  @ApiOperation({
+    summary: "Execute admin redeem swaps (underlying->USDC to vault PDA)",
+  })
   @ApiBody({ type: RedeemSwapAdminDto })
-  @ApiResponse({ status: 200, description: "Redeem swaps executed successfully" })
+  @ApiResponse({
+    status: 200,
+    description: "Redeem swaps executed successfully",
+  })
   async redeemSwap(@Body() dto: RedeemSwapAdminDto): Promise<any> {
     console.log("dto", dto);
     return this.txEventManagementService.redeemSwapAdmin(dto);

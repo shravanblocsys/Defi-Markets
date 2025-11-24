@@ -2,8 +2,14 @@ import { cn } from "@/lib/utils";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { VaultChartPoint } from "@/types/store";
-import { ArrowUpRight, TrendingUp } from "lucide-react";
+import {
+  ArrowUpRight,
+  TrendingUp,
+  BadgeCheck,
+  BadgeCheckIcon,
+} from "lucide-react";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
+import checkIcon from "@/assets/check.png";
 
 interface AssetInfo {
   symbol: string;
@@ -23,6 +29,7 @@ interface FeatureVaultCardProps {
   apyDate?: string;
   avatar?: string;
   isAPYCalculating?: boolean;
+  twitter_username?: string;
 }
 // totalValueLocked
 
@@ -40,6 +47,7 @@ const FeatureVaultCard = ({
   apyDate = "APY SUN AUG 13 9.8",
   avatar,
   isAPYCalculating = false,
+  twitter_username,
 }: FeatureVaultCardProps) => {
   const navigate = useNavigate();
 
@@ -172,9 +180,32 @@ const FeatureVaultCard = ({
             <p className=" flex items-center gap-2 text-xs text-white/80 font-architekt tracking-wider uppercase">
               Owner
             </p>
-            <p className="text-sm font-semibold text-white font-architekt">
-              {owner}
-            </p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-white font-architekt">
+                {owner}
+              </p>
+              {twitter_username && (
+                <a
+                  href={`https://x.com/${twitter_username}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="relative flex items-center justify-center hover:opacity-80 transition-opacity cursor-pointer"
+                  title={`View @${twitter_username} on X`}
+                >
+                  <BadgeCheckIcon
+                    className="w-5 h-5 flex-shrink-0 drop-shadow-lg"
+                    strokeWidth={2.5}
+                    fill="rgb(59 130 246)"
+                  />
+                  {/* <img
+                    src={checkIcon}
+                    alt="Verified"
+                    className="w-5 h-5 flex-shrink-0 drop-shadow-lg"
+                  /> */}
+                </a>
+              )}
+            </div>
           </div>
           <div className="flex justify-center items-center w-8 h-8 rounded-full bg-white/20 border border-white/30 bg-cover object-contain bg-center bg-no-repeat overflow-hidden">
             {avatar && avatar.startsWith("http:") ? (

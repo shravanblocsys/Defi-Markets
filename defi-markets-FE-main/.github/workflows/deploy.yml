@@ -3,12 +3,12 @@ name: Deploy Frontend to Hostinger Server
 on:
   push:
     branches:
-      - main  # ✅ Only runs on direct push to main
+      - develop  # ✅ Only runs on direct push to main
   pull_request:
     types:
       - closed
     branches:
-      - main  # ✅ Only triggers when PR is merged into main
+      - develop  # ✅ Only triggers when PR is merged into main
 
 jobs:
   deploy:
@@ -28,24 +28,32 @@ jobs:
         run: |
           echo "VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}" >> $GITHUB_ENV
           echo "VITE_APP_ID=${{ secrets.VITE_APP_ID }}" >> $GITHUB_ENV
+          echo "VITE_BASE_URL=${{ secrets.VITE_BASE_URL }}" >> $GITHUB_ENV
           echo "VITE_VAULT_FACTORY_PROGRAM_ID=${{ secrets.VITE_VAULT_FACTORY_PROGRAM_ID }}" >> $GITHUB_ENV
           echo "VITE_FEES_ID=${{ secrets.VITE_FEES_ID }}" >> $GITHUB_ENV
           echo "VITE_SOLANA_NETWORK=${{ secrets.VITE_SOLANA_NETWORK }}" >> $GITHUB_ENV
           echo "VITE_HELIUS_API_KEY=${{ secrets.VITE_HELIUS_API_KEY }}" >> $GITHUB_ENV
+          echo "VITE_JUPITER_API_KEY=${{ secrets.VITE_JUPITER_API_KEY }}" >> $GITHUB_ENV
+          echo "VITE_JUPITER_PRICE_API=${{ secrets.VITE_JUPITER_PRICE_API }}" >> $GITHUB_ENV
           echo "VITE_MAINNET_RPC_URL=${{ secrets.VITE_MAINNET_RPC_URL }}" >> $GITHUB_ENV
           echo "VITE_DEVNET_RPC_URL=${{ secrets.VITE_DEVNET_RPC_URL }}" >> $GITHUB_ENV
+          echo "VITE_PINATA_GATEWAY=${{ secrets.VITE_PINATA_GATEWAY }}" >> $GITHUB_ENV
           echo "SKIP_PREFLIGHT_CHECK=true" >> $GITHUB_ENV
 
       - name: Build Frontend
         env:
             VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
             VITE_APP_ID: ${{ secrets.VITE_APP_ID }}
+            VITE_BASE_URL: ${{ secrets.VITE_BASE_URL }}
             VITE_VAULT_FACTORY_PROGRAM_ID: ${{ secrets.VITE_VAULT_FACTORY_PROGRAM_ID }}
             VITE_FEES_ID: ${{ secrets.VITE_FEES_ID }}
             VITE_SOLANA_NETWORK: ${{ secrets.VITE_SOLANA_NETWORK }}
             VITE_HELIUS_API_KEY: ${{ secrets.VITE_HELIUS_API_KEY }}
+            VITE_JUPITER_API_KEY: ${{ secrets.VITE_JUPITER_API_KEY }}
+            VITE_JUPITER_PRICE_API: ${{ secrets.VITE_JUPITER_PRICE_API }}
             VITE_MAINNET_RPC_URL: ${{ secrets.VITE_MAINNET_RPC_URL }}
             VITE_DEVNET_RPC_URL: ${{ secrets.VITE_DEVNET_RPC_URL }}
+            VITE_PINATA_GATEWAY: ${{ secrets.VITE_PINATA_GATEWAY }}
             SKIP_PREFLIGHT_CHECK: true
         run: CI=false npm run build
 

@@ -1,5 +1,10 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, TokenAccount};
+use anchor_spl::token_interface::{self as token_interface};
+use mpl_token_metadata::{
+    instructions::CreateMetadataAccountV3,
+    types::DataV2,
+};
 use crate::{
     contexts::*,
     constants::*,
@@ -99,6 +104,7 @@ pub fn create_vault(
     vault_symbol: String,
     underlying_assets: Vec<UnderlyingAsset>,
     management_fees: u16,
+    metadata_uri: String,
 ) -> Result<()> {
     msg!("📝 Vault Name: {}", vault_name);
     msg!("🏷️ Vault Symbol: {}", vault_symbol);
@@ -220,6 +226,69 @@ pub fn create_vault(
         ctx.accounts.vault_token_account.key()
     );
     msg!("📅 Created at: {}", ctx.accounts.vault.created_at);
+
+    // Create token metadata for the vault token
+    {
+        let vault_bump = ctx.accounts.vault.bump;
+        let vault_index_bytes = vault_index.to_le_bytes();
+        let bump_array = [vault_bump];
+        let seeds: &[&[u8]] = &[
+            b"vault",
+            factory_key.as_ref(),
+            &vault_index_bytes,
+            &bump_array,
+        ];
+        // Prepare metadata data
+        let metadata_data = DataV2 {
+            name: vault_name.clone(),
+            symbol: vault_symbol.clone(),
+            uri: metadata_uri.clone(), // URI pointing to JSON metadata file (e.g., IPFS)
+            seller_fee_basis_points: 0,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+
+        // Create metadata account via CPI
+        let create_metadata_ix = CreateMetadataAccountV3 {
+            metadata: ctx.accounts.metadata_account.key(),
+            mint: ctx.accounts.vault_mint.key(),
+            mint_authority: ctx.accounts.vault.key(),
+            payer: ctx.accounts.admin.key(),
+            update_authority: (ctx.accounts.vault.key(), true),
+            system_program: ctx.accounts.system_program.key(),
+            rent: Some(ctx.accounts.rent.key()),
+        };
+
+        let create_metadata_args = mpl_token_metadata::instructions::CreateMetadataAccountV3InstructionArgs {
+            data: metadata_data,
+            is_mutable: true,
+            collection_details: None,
+        };
+
+        let instruction = CreateMetadataAccountV3::instruction(
+            &create_metadata_ix,
+            create_metadata_args,
+        );
+
+        let account_infos = vec![
+            ctx.accounts.metadata_account.to_account_info(),
+            ctx.accounts.vault_mint.to_account_info(),
+            ctx.accounts.vault.to_account_info(),
+            ctx.accounts.admin.to_account_info(),
+            ctx.accounts.vault.to_account_info(),
+            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.rent.to_account_info(),
+            ctx.accounts.token_metadata_program.to_account_info(),
+        ];
+
+        anchor_lang::solana_program::program::invoke_signed(
+            &instruction,
+            &account_infos,
+            &[seeds],
+        )?;
+        msg!("📝 Created token metadata for vault token");
+    }
 
     // Seed initial supply: mint 1 smallest unit of the vault token to the vault's own token account
     // This keeps supply > 0 while assets remain 0, avoiding divide-by-zero in future logic.
@@ -346,32 +415,70 @@ pub fn get_factory_info(ctx: Context<GetFactoryInfo>) -> Result<FactoryInfo> {
 }
 
 /// Accrues management fees based on elapsed time since last accrual.
+/// Standardized formula: fee = (total_assets * annual_fee_bps * elapsed_seconds) / (MAX_BPS * SECONDS_PER_YEAR)
+/// This function is called before any fee-related operations to ensure fees are up-to-date.
+/// 
+/// Fee accrual is based on:
+/// - Total assets under management (AUM) - stored in vault.total_assets
+/// - Annual fee rate in basis points - stored in vault.management_fees
+/// - Time elapsed since last accrual - calculated from last_fee_accrual_ts
+/// 
+/// The accrued fees are deducted from total_assets (reducing NAV) and tracked in accrued_management_fees_usdc.
 fn accrue_management_fees(vault: &mut Account<Vault>) -> Result<()> {
     let now = Clock::get()?.unix_timestamp;
-    if now <= vault.last_fee_accrual_ts { return Ok(()); }
+    
+    // Early return if no time has elapsed
+    if now <= vault.last_fee_accrual_ts {
+        return Ok(());
+    }
 
     const SECONDS_PER_YEAR: i64 = 365 * 24 * 60 * 60;
     let elapsed = now - vault.last_fee_accrual_ts;
-    if elapsed <= 0 { return Ok(()); }
+    
+    // Validate elapsed time is positive
+    if elapsed <= 0 {
+        return Ok(());
+    }
 
     let annual_bps = vault.management_fees as u128;
+    
+    // Early return if no fees configured or no assets
     if annual_bps == 0 || vault.total_assets == 0 {
         vault.last_fee_accrual_ts = now;
         return Ok(());
     }
 
+    // Standardized fee accrual formula:
+    // fee = (total_assets * annual_fee_bps * elapsed_seconds) / (MAX_BPS * SECONDS_PER_YEAR)
+    // This calculates the pro-rata fee based on:
+    // - Total assets under management (AUM)
+    // - Annual fee rate in basis points
+    // - Time elapsed since last accrual
     let fee_numerator: u128 = (vault.total_assets as u128)
-        .checked_mul(annual_bps).unwrap()
-        .checked_mul(elapsed as u128).unwrap();
+        .checked_mul(annual_bps).ok_or(ErrorCode::InvalidAmount)?
+        .checked_mul(elapsed as u128).ok_or(ErrorCode::InvalidAmount)?;
     let fee_denominator: u128 = (MAX_BPS as u128)
-        .checked_mul(SECONDS_PER_YEAR as u128).unwrap();
-    let accrued = fee_numerator.checked_div(fee_denominator).unwrap() as u64;
+        .checked_mul(SECONDS_PER_YEAR as u128).ok_or(ErrorCode::InvalidAmount)?;
+    
+    let accrued = fee_numerator.checked_div(fee_denominator).unwrap_or(0) as u64;
 
     if accrued > 0 {
+        // Deduct accrued fees from total assets (reduces NAV)
         vault.total_assets = vault.total_assets.checked_sub(accrued).unwrap_or(vault.total_assets);
-        vault.accrued_management_fees_usdc = vault.accrued_management_fees_usdc.checked_add(accrued).unwrap();
+        // Add to accrued fees tracker
+        vault.accrued_management_fees_usdc = vault.accrued_management_fees_usdc.checked_add(accrued).unwrap_or(vault.accrued_management_fees_usdc);
+        
+        msg!("📊 Fee accrual:");
+        msg!("  Elapsed time: {} seconds", elapsed);
+        msg!("  Total assets (AUM): {} USDC", vault.total_assets + accrued);
+        msg!("  Annual fee rate: {} bps", annual_bps);
+        msg!("  Accrued fees: {} USDC", accrued);
+        msg!("  Total accrued fees: {} USDC", vault.accrued_management_fees_usdc);
     }
+    
+    // Update last accrual timestamp
     vault.last_fee_accrual_ts = now;
+    
     Ok(())
 }
 
@@ -737,6 +844,7 @@ pub fn withdraw_underlying_to_user(
     ctx: Context<WithdrawUnderlyingToUser>,
     vault_index: u32,
     amount: u64,
+    decimals: u8,
 ) -> Result<()> {
     msg!("🔄 Withdrawing {} tokens of underlying from vault to user", amount);
 
@@ -745,9 +853,37 @@ pub fn withdraw_underlying_to_user(
     let vault_index_bytes = vault_index.to_le_bytes();
     let bump_array = [vault_bump];
 
+    // Validate token program ID - must be either SPL Token or Token-2022
+    let token_program_key = ctx.accounts.token_program.key();
+    
+    // Hardcoded program IDs for validation
+    let is_token_2022 = token_program_key == TOKEN_2022_PROGRAM_ID;
+    let is_spl_token = token_program_key == TOKEN_PROGRAM_ID;
+    
+    require!(
+        is_spl_token || is_token_2022,
+        ErrorCode::InvalidAmount
+    );
+    
+    msg!("📋 Token Program: {}", if is_token_2022 { "Token-2022" } else { "SPL Token" });
+    msg!("🔢 Mint decimals: {} (passed as parameter)", decimals);
+
+    // Validate account owners match the token program
+    require!(
+        ctx.accounts.vault_asset_account.owner == &token_program_key,
+        ErrorCode::InvalidAmount
+    );
+    require!(
+        ctx.accounts.user_asset_account.owner == &token_program_key,
+        ErrorCode::InvalidAmount
+    );
+    
     // PDA-signed transfer from vault asset ATA to user's ATA
-    let transfer_cpi_accounts = token::Transfer {
+    // Using transfer_checked to support both SPL Token and Token-2022
+    // Token-2022 requires transfer_checked with mint account
+    let transfer_cpi_accounts = token_interface::TransferChecked {
         from: ctx.accounts.vault_asset_account.to_account_info(),
+        mint: ctx.accounts.mint.to_account_info(),
         to: ctx.accounts.user_asset_account.to_account_info(),
         authority: ctx.accounts.vault.to_account_info(),
     };
@@ -761,7 +897,9 @@ pub fn withdraw_underlying_to_user(
     let binding = [seeds];
     let transfer_cpi_ctx =
         CpiContext::new_with_signer(transfer_cpi_program, transfer_cpi_accounts, &binding);
-    token::transfer(transfer_cpi_ctx, amount)?;
+    
+    // Execute transfer_checked (works for both SPL Token and Token-2022)
+    token_interface::transfer_checked(transfer_cpi_ctx, amount, decimals)?;
 
     msg!("✅ Underlying transfer completed");
     Ok(())
@@ -950,6 +1088,7 @@ pub fn get_accrued_management_fees<'info>(
     ctx: Context<'_, '_, 'info, 'info, GetAccruedManagementFees<'info>>,
     vault_index: u32,
     asset_prices: Vec<AssetPrice>,
+    share_price: u64,
 ) -> Result<AccruedManagementFees> {
     let vault = &mut ctx.accounts.vault;
     let now = Clock::get()?.unix_timestamp;
@@ -1068,6 +1207,7 @@ pub fn get_accrued_management_fees<'info>(
     msg!("Vault Name: {}", vault.vault_name);
     msg!("Vault Admin: {}", vault.admin);
     msg!("Management Fee Bps: {}", vault.management_fees);
+    msg!("Provided Share Price: {} (raw units)", share_price);
     msg!("Done");
     
     Ok(AccruedManagementFees {
@@ -1091,22 +1231,23 @@ pub fn get_accrued_management_fees<'info>(
 pub fn distribute_accrued_fees(
     ctx: Context<DistributeAccruedFees>,
     vault_index: u32,
+    share_price: u64,
+    management_fees_amount: u64,
 ) -> Result<()> {
     msg!("💰 Starting accrued fees distribution for vault #{}", vault_index);
 
-    // Accrue and read required values while holding a short mutable borrow
-    let (total_accrued_fees, vault_bump, vault_key, factory_key) = {
-        let vault = &mut ctx.accounts.vault;
-        accrue_management_fees(vault)?;
-        (vault.accrued_management_fees_usdc, vault.bump, vault.key(), ctx.accounts.factory.key())
+    // Validate management fees amount
+    require!(management_fees_amount > 0, ErrorCode::InvalidAmount);
+
+    // Read required values (no fee accrual - fees calculated off-chain)
+    let (vault_bump, vault_key, factory_key) = {
+        let vault = &ctx.accounts.vault;
+        (vault.bump, vault.key(), ctx.accounts.factory.key())
     };
 
-    if total_accrued_fees == 0 {
-        msg!("ℹ️ No accrued fees to distribute");
-        return Ok(());
-    }
+    let total_accrued_fees = management_fees_amount;
 
-    msg!("💵 Total accrued fees to distribute: {} USDC", total_accrued_fees);
+    msg!("💵 Total accrued fees to distribute: {} USDC (from off-chain calculation)", total_accrued_fees);
 
     // Calculate fee distribution using configurable ratios from factory
     let factory = &ctx.accounts.factory;
@@ -1121,8 +1262,9 @@ pub fn distribute_accrued_fees(
     msg!("  Vault creator share: {} USDC ({} bps)", vault_creator_share_usdc, factory.vault_creator_fee_ratio_bps);
     msg!("  Platform share: {} USDC ({} bps)", platform_share_usdc, factory.platform_fee_ratio_bps);
 
-    // Calculate equivalent vault tokens to mint
-    // We use the vault's total supply and total assets to determine the token amount
+    // Calculate equivalent vault tokens to mint using share price (same formula as deposit)
+    // Vault tokens = (usdc_amount * scale) / share_price
+    // If share price is 0, treat as 1:1 ratio (same as deposit)
     let vault_total_supply = ctx.accounts.vault.total_supply;
     let vault_total_assets = ctx.accounts.vault.total_assets;
 
@@ -1131,24 +1273,41 @@ pub fn distribute_accrued_fees(
         return Ok(());
     }
 
-    // Calculate vault tokens equivalent to the USDC amounts
-    // Formula: vault_tokens = (usdc_amount * total_supply) / total_assets
+    let scale: u128 = 10u128.pow(ctx.accounts.vault_mint.decimals as u32);
+    
+    msg!("📊 Share price:");
+    msg!("  Provided share price: {} (raw units)", share_price);
+    msg!("  Total assets: {} USDC", vault_total_assets);
+    msg!("  Total supply: {} tokens", vault_total_supply);
+
+    // Calculate vault tokens using the same formula as deposit: vault_tokens = (usdc_amount * scale) / share_price
+    // If share price is 0, treat as 1:1 ratio (same as deposit)
     let vault_creator_share_tokens: u64 = if vault_creator_share_usdc > 0 {
-        ((vault_creator_share_usdc as u128)
-            .checked_mul(vault_total_supply as u128)
-            .unwrap()
-            .checked_div(vault_total_assets as u128)
-            .unwrap()) as u64
+        if share_price == 0 {
+            // If share price is 0, use 1:1 ratio (same as deposit)
+            vault_creator_share_usdc
+        } else {
+            ((vault_creator_share_usdc as u128)
+                .checked_mul(scale)
+                .ok_or(ErrorCode::InvalidAmount)?
+                .checked_div(share_price as u128)
+                .ok_or(ErrorCode::InvalidAmount)?) as u64
+        }
     } else {
         0
     };
 
     let platform_share_tokens: u64 = if platform_share_usdc > 0 {
-        ((platform_share_usdc as u128)
-            .checked_mul(vault_total_supply as u128)
-            .unwrap()
-            .checked_div(vault_total_assets as u128)
-            .unwrap()) as u64
+        if share_price == 0 {
+            // If share price is 0, use 1:1 ratio (same as deposit)
+            platform_share_usdc
+        } else {
+            ((platform_share_usdc as u128)
+                .checked_mul(scale)
+                .ok_or(ErrorCode::InvalidAmount)?
+                .checked_div(share_price as u128)
+                .ok_or(ErrorCode::InvalidAmount)?) as u64
+        }
     } else {
         0
     };
@@ -1226,6 +1385,184 @@ pub fn distribute_accrued_fees(
     msg!("  Vault creator received: {} vault tokens", vault_creator_share_tokens);
     msg!("  Platform received: {} vault tokens", platform_share_tokens);
     msg!("  New total supply: {}", ctx.accounts.vault.total_supply);
+
+    Ok(())
+}
+
+/// Claim management fees directly by the vault creator.
+/// This allows DTF creators to claim their accrued management fees without relying on admin/keeper.
+/// Fees are distributed as vault tokens according to factory-configured ratios (creator share + platform share).
+/// This aligns fee recipients with vault performance by giving them vault shares.
+/// share_price: Current share price in raw stablecoin units per share (same format as deposit)
+pub fn claim_management_fee(
+    ctx: Context<ClaimManagementFee>,
+    vault_index: u32,
+    share_price: u64,
+    management_fees_amount: u64,
+) -> Result<()> {
+    msg!("💰 Starting management fee claim for vault #{}", vault_index);
+    msg!("👤 Creator: {}", ctx.accounts.creator.key());
+    
+    // Validate management fees amount
+    require!(management_fees_amount > 0, ErrorCode::InvalidAmount);
+
+    // Read required values (no fee accrual - fees calculated off-chain)
+    let (vault_bump, vault_key, factory_key, creator_key) = {
+        let vault = &ctx.accounts.vault;
+        (
+            vault.bump,
+            vault.key(),
+            ctx.accounts.factory.key(),
+            ctx.accounts.creator.key(),
+        )
+    };
+
+    let total_accrued_fees = management_fees_amount;
+
+    msg!("💵 Total accrued fees: {} USDC (from off-chain calculation)", total_accrued_fees);
+    msg!("📅 Timestamp: {}", Clock::get()?.unix_timestamp);
+    msg!("🏦 Vault: {} ({})", ctx.accounts.vault.vault_name, ctx.accounts.vault.vault_symbol);
+
+    // Calculate fee distribution using configurable ratios from factory
+    let factory = &ctx.accounts.factory;
+    let creator_share_usdc: u64 = ((total_accrued_fees as u128)
+        .checked_mul(factory.vault_creator_fee_ratio_bps as u128)
+        .ok_or(ErrorCode::InvalidAmount)?
+        .checked_div(MAX_BPS as u128)
+        .ok_or(ErrorCode::InvalidAmount)?) as u64;
+    let platform_share_usdc: u64 = total_accrued_fees
+        .checked_sub(creator_share_usdc)
+        .ok_or(ErrorCode::InvalidAmount)?;
+
+    msg!("📊 Fee distribution:");
+    msg!("  Creator share: {} USDC ({} bps)", creator_share_usdc, factory.vault_creator_fee_ratio_bps);
+    msg!("  Platform share: {} USDC ({} bps)", platform_share_usdc, factory.platform_fee_ratio_bps);
+
+    // Calculate equivalent vault tokens to mint using share price (same formula as deposit)
+    // Vault tokens = (usdc_amount * scale) / share_price
+    // If share price is 0, treat as 1:1 ratio (same as deposit)
+    let vault_total_supply = ctx.accounts.vault.total_supply;
+    let vault_total_assets = ctx.accounts.vault.total_assets;
+
+    if vault_total_supply == 0 || vault_total_assets == 0 {
+        msg!("⚠️ Vault has no supply or assets, cannot calculate token equivalents");
+        return Ok(());
+    }
+
+    let scale: u128 = 10u128.pow(ctx.accounts.vault_mint.decimals as u32);
+    
+    msg!("📊 Share price:");
+    msg!("  Provided share price: {} (raw units)", share_price);
+    msg!("  Total assets: {} USDC", vault_total_assets);
+    msg!("  Total supply: {} tokens", vault_total_supply);
+
+    // Calculate vault tokens using the same formula as deposit: vault_tokens = (usdc_amount * scale) / share_price
+    // If share price is 0, treat as 1:1 ratio (same as deposit)
+    let creator_share_tokens: u64 = if creator_share_usdc > 0 {
+        if share_price == 0 {
+            // If share price is 0, use 1:1 ratio (same as deposit)
+            creator_share_usdc
+        } else {
+            ((creator_share_usdc as u128)
+                .checked_mul(scale)
+                .ok_or(ErrorCode::InvalidAmount)?
+                .checked_div(share_price as u128)
+                .ok_or(ErrorCode::InvalidAmount)?) as u64
+        }
+    } else {
+        0
+    };
+
+    let platform_share_tokens: u64 = if platform_share_usdc > 0 {
+        if share_price == 0 {
+            // If share price is 0, use 1:1 ratio (same as deposit)
+            platform_share_usdc
+        } else {
+            ((platform_share_usdc as u128)
+                .checked_mul(scale)
+                .ok_or(ErrorCode::InvalidAmount)?
+                .checked_div(share_price as u128)
+                .ok_or(ErrorCode::InvalidAmount)?) as u64
+        }
+    } else {
+        0
+    };
+
+    msg!("🪙 Vault token distribution:");
+    msg!("  Creator tokens: {} (equivalent to {} USDC)", creator_share_tokens, creator_share_usdc);
+    msg!("  Platform tokens: {} (equivalent to {} USDC)", platform_share_tokens, platform_share_usdc);
+
+    // Prepare signer seeds for vault authority
+    let vault_index_bytes = vault_index.to_le_bytes();
+    let bump_array = [vault_bump];
+    let seeds: &[&[u8]] = &[
+        b"vault",
+        factory_key.as_ref(),
+        &vault_index_bytes,
+        &bump_array,
+    ];
+    let binding = [seeds];
+
+    // Mint vault tokens to creator
+    if creator_share_tokens > 0 {
+        msg!("🪙 Minting {} vault tokens to creator", creator_share_tokens);
+        let mint_cpi_accounts = token::MintTo {
+            mint: ctx.accounts.vault_mint.to_account_info(),
+            to: ctx.accounts.creator_vault_account.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        let mint_cpi_program = ctx.accounts.token_program.to_account_info();
+        let mint_cpi_ctx = CpiContext::new_with_signer(mint_cpi_program, mint_cpi_accounts, &binding);
+        token::mint_to(mint_cpi_ctx, creator_share_tokens)?;
+        msg!("✅ Creator tokens minted successfully");
+    }
+
+    // Mint vault tokens to platform
+    if platform_share_tokens > 0 {
+        msg!("🪙 Minting {} vault tokens to platform", platform_share_tokens);
+        let mint_cpi_accounts = token::MintTo {
+            mint: ctx.accounts.vault_mint.to_account_info(),
+            to: ctx.accounts.fee_recipient_vault_account.to_account_info(),
+            authority: ctx.accounts.vault.to_account_info(),
+        };
+        let mint_cpi_program = ctx.accounts.token_program.to_account_info();
+        let mint_cpi_ctx = CpiContext::new_with_signer(mint_cpi_program, mint_cpi_accounts, &binding);
+        token::mint_to(mint_cpi_ctx, platform_share_tokens)?;
+        msg!("✅ Platform tokens minted successfully");
+    }
+
+    // Update vault state: reset accrued fees and update total supply
+    {
+        let vault = &mut ctx.accounts.vault;
+        vault.accrued_management_fees_usdc = 0;
+        vault.total_supply = vault.total_supply
+            .checked_add(creator_share_tokens)
+            .ok_or(ErrorCode::InvalidAmount)?
+            .checked_add(platform_share_tokens)
+            .ok_or(ErrorCode::InvalidAmount)?;
+    }
+
+    // Emit event with comprehensive logging
+    let timestamp = Clock::get()?.unix_timestamp;
+    emit!(ManagementFeeClaimed {
+        vault: vault_key,
+        creator: creator_key,
+        vault_index,
+        total_accrued_fees_usdc: total_accrued_fees,
+        creator_share_usdc,
+        platform_share_usdc,
+        vault_creator_fee_ratio_bps: factory.vault_creator_fee_ratio_bps,
+        platform_fee_ratio_bps: factory.platform_fee_ratio_bps,
+        timestamp,
+    });
+
+    msg!("🎉 Management fee claim completed successfully!");
+    msg!("📊 Summary:");
+    msg!("  Total fees claimed: {} USDC", total_accrued_fees);
+    msg!("  Creator received: {} vault tokens (equivalent to {} USDC)", creator_share_tokens, creator_share_usdc);
+    msg!("  Platform received: {} vault tokens (equivalent to {} USDC)", platform_share_tokens, platform_share_usdc);
+    msg!("  New total supply: {}", ctx.accounts.vault.total_supply);
+    msg!("  Timestamp: {}", timestamp);
 
     Ok(())
 }

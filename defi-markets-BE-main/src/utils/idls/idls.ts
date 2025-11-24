@@ -1,3 +1,9 @@
+/**
+ * Program IDL in camelCase format in order to be used in JS/TS.
+ *
+ * Note that this is only a type helper and is not the actual IDL. The original
+ * IDL can be found at `target/idl/vault_mvp.json`.
+ */
 export const VAULT_FACTORY_IDL = {
   address: "BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB",
   metadata: {
@@ -7,6 +13,107 @@ export const VAULT_FACTORY_IDL = {
     description: "Created with Anchor",
   },
   instructions: [
+    {
+      name: "claimManagementFee",
+      docs: [
+        "Claim management fees directly by the vault creator (decentralized)",
+        "Allows DTF creators to claim their accrued management fees without relying on admin/keeper",
+        "Fees are distributed as vault tokens according to factory-configured ratios (creator share + platform share)",
+        "This aligns fee recipients with vault performance by giving them vault shares",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)",
+      ],
+      discriminator: [50, 47, 37, 27, 210, 37, 109, 118],
+      accounts: [
+        {
+          name: "creator",
+          docs: ["Vault creator claiming their management fees"],
+          writable: true,
+          signer: true,
+        },
+        {
+          name: "factory",
+          docs: ['Factory PDA - seeds: ["factory_v2"]'],
+          pda: {
+            seeds: [
+              {
+                kind: "const",
+                value: [102, 97, 99, 116, 111, 114, 121, 95, 118, 50],
+              },
+            ],
+          },
+        },
+        {
+          name: "vault",
+          docs: ['Vault PDA - seeds: ["vault", factory.key(), vault_index]'],
+          writable: true,
+          pda: {
+            seeds: [
+              {
+                kind: "const",
+                value: [118, 97, 117, 108, 116],
+              },
+              {
+                kind: "account",
+                path: "factory",
+              },
+              {
+                kind: "arg",
+                path: "vaultIndex",
+              },
+            ],
+          },
+        },
+        {
+          name: "vaultMint",
+          docs: ["Vault token mint (for minting fee shares)"],
+          writable: true,
+          pda: {
+            seeds: [
+              {
+                kind: "const",
+                value: [118, 97, 117, 108, 116, 95, 109, 105, 110, 116],
+              },
+              {
+                kind: "account",
+                path: "vault",
+              },
+            ],
+          },
+        },
+        {
+          name: "creatorVaultAccount",
+          docs: [
+            "Creator's vault token account (receives vault creator share)",
+          ],
+          writable: true,
+        },
+        {
+          name: "feeRecipientVaultAccount",
+          docs: [
+            "Platform fee recipient's vault token account (receives platform share)",
+          ],
+          writable: true,
+        },
+        {
+          name: "tokenProgram",
+          address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+        },
+        {
+          name: "systemProgram",
+          address: "11111111111111111111111111111111",
+        },
+      ],
+      args: [
+        {
+          name: "vaultIndex",
+          type: "u32",
+        },
+        {
+          name: "sharePrice",
+          type: "u64",
+        },
+      ],
+    },
     {
       name: "collectWeeklyManagementFees",
       docs: [
@@ -199,6 +306,15 @@ export const VAULT_FACTORY_IDL = {
           writable: true,
         },
         {
+          name: "tokenMetadataProgram",
+          docs: ["Metaplex Token Metadata Program"],
+        },
+        {
+          name: "metadataAccount",
+          docs: ["Token Metadata Account (PDA)"],
+          writable: true,
+        },
+        {
           name: "tokenProgram",
           address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         },
@@ -233,6 +349,10 @@ export const VAULT_FACTORY_IDL = {
         {
           name: "managementFees",
           type: "u16",
+        },
+        {
+          name: "metadataUri",
+          type: "string",
         },
       ],
     },
@@ -381,6 +501,7 @@ export const VAULT_FACTORY_IDL = {
       docs: [
         "Distribute accrued management fees as vault tokens to vault creator and platform",
         "This aligns fee recipients with vault performance by giving them vault shares",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)",
       ],
       discriminator: [205, 241, 193, 87, 26, 33, 131, 94],
       accounts: [
@@ -467,6 +588,10 @@ export const VAULT_FACTORY_IDL = {
         {
           name: "vaultIndex",
           type: "u32",
+        },
+        {
+          name: "sharePrice",
+          type: "u64",
         },
       ],
     },
@@ -686,6 +811,7 @@ export const VAULT_FACTORY_IDL = {
       docs: [
         "Get and update accrued management fees for a vault",
         "This function calculates newly accrued fees using live asset prices and balances",
+        "share_price: Current share price in raw stablecoin units per share (same format as deposit)",
       ],
       discriminator: [134, 145, 47, 94, 255, 206, 143, 195],
       accounts: [
@@ -756,6 +882,10 @@ export const VAULT_FACTORY_IDL = {
               },
             },
           },
+        },
+        {
+          name: "sharePrice",
+          type: "u64",
         },
       ],
       returns: {
@@ -1265,17 +1395,30 @@ export const VAULT_FACTORY_IDL = {
         },
         {
           name: "vaultAssetAccount",
-          docs: ["Source: vault's ATA for the asset"],
+          docs: [
+            "Source: vault's ATA for the asset (supports both SPL Token and Token-2022)",
+            "We use AccountInfo to support both token program types",
+          ],
           writable: true,
         },
         {
           name: "userAssetAccount",
-          docs: ["Destination: user's ATA for the asset"],
+          docs: [
+            "Destination: user's ATA for the asset (supports both SPL Token and Token-2022)",
+            "We use AccountInfo to support both token program types",
+          ],
           writable: true,
         },
         {
+          name: "mint",
+          docs: [
+            "Mint of the underlying asset (required for Token-2022 transfer_checked)",
+            "We use AccountInfo here because we need to support both SPL Token and Token-2022 mints.",
+          ],
+        },
+        {
           name: "tokenProgram",
-          address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+          docs: ["Token program (supports both SPL Token and Token-2022)"],
         },
         {
           name: "systemProgram",
@@ -1290,6 +1433,10 @@ export const VAULT_FACTORY_IDL = {
         {
           name: "amount",
           type: "u64",
+        },
+        {
+          name: "decimals",
+          type: "u8",
         },
       ],
     },
@@ -1324,6 +1471,10 @@ export const VAULT_FACTORY_IDL = {
     {
       name: "factoryInitialized",
       discriminator: [20, 86, 103, 75, 20, 220, 162, 63],
+    },
+    {
+      name: "managementFeeClaimed",
+      discriminator: [204, 171, 65, 174, 132, 53, 99, 195],
     },
     {
       name: "redeemEvent",
@@ -1417,6 +1568,11 @@ export const VAULT_FACTORY_IDL = {
       code: 6014,
       name: "insufficientFunds",
       msg: "Insufficient funds",
+    },
+    {
+      code: 6015,
+      name: "invalidMetadataProgram",
+      msg: "Invalid metadata program",
     },
   ],
   types: [
@@ -1915,6 +2071,50 @@ export const VAULT_FACTORY_IDL = {
           },
           {
             name: "deprecated",
+          },
+        ],
+      },
+    },
+    {
+      name: "managementFeeClaimed",
+      type: {
+        kind: "struct",
+        fields: [
+          {
+            name: "vault",
+            type: "pubkey",
+          },
+          {
+            name: "creator",
+            type: "pubkey",
+          },
+          {
+            name: "vaultIndex",
+            type: "u32",
+          },
+          {
+            name: "totalAccruedFeesUsdc",
+            type: "u64",
+          },
+          {
+            name: "creatorShareUsdc",
+            type: "u64",
+          },
+          {
+            name: "platformShareUsdc",
+            type: "u64",
+          },
+          {
+            name: "vaultCreatorFeeRatioBps",
+            type: "u16",
+          },
+          {
+            name: "platformFeeRatioBps",
+            type: "u16",
+          },
+          {
+            name: "timestamp",
+            type: "i64",
           },
         ],
       },

@@ -25,9 +25,13 @@ import {
 import { cn } from "@/lib/utils";
 import { FeeConfig } from "@/types/store";
 import { PublicKey } from "@solana/web3.js";
+import * as anchor from "@coral-xyz/anchor";
 import { useToast } from "@/hooks/use-toast";
 import { useVaultCreation } from "@/hooks/useContract";
-import { TOKEN_MINTS } from "@/components/solana/programIds/programids";
+import {
+  TOKEN_MINTS,
+  VAULT_FACTORY_PROGRAM_ID,
+} from "@/components/solana/programIds/programids";
 import {
   transactionEventApi,
   uploadApi,
@@ -35,13 +39,14 @@ import {
   feesManagementApi,
   assetAllocationApi,
 } from "@/services/api";
-import { generateSymbol, getInitials } from "@/lib/helpers";
+import { generateSymbol, getInitials, parseAnchorError } from "@/lib/helpers";
 import { SuccessPopup } from "@/components/ui/SuccessPopup";
 import AssetSelectionPopup from "@/components/ui/AssetSelectionPopup";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useSelector } from "react-redux";
 import { RootState } from "@/store";
 import { ConnectButton } from "@/components/wallet/ConnectButton";
+import { uploadMetadataToIPFS, isPinataConfigured } from "@/services/pinata";
 
 interface Asset {
   symbol: string;
@@ -112,6 +117,8 @@ const CreateVault = () => {
   const [currentFeeConfig, setCurrentFeeConfig] = useState<FeeConfig | null>(
     null
   );
+  const [uploadingMetadata, setUploadingMetadata] = useState(false);
+  const [metadataUri, setMetadataUri] = useState<string>("");
 
   // Derived management fee bounds from current fee configuration
   const managementFeeConfig = currentFeeConfig?.fees?.find((fee) =>
@@ -765,12 +772,117 @@ const CreateVault = () => {
         );
       }
 
+      // Upload metadata to IPFS before creating vault
+      let metadataUriToUse = "";
+      if (isPinataConfigured() && program) {
+        try {
+          setUploadingMetadata(true);
+          toast({
+            title: "Uploading Metadata...",
+            description:
+              "Uploading vault metadata to IPFS. This may take a moment.",
+          });
+
+          // Calculate vault mint PDA before uploading metadata (needed for additionalMetadata)
+          // This matches the script.ts approach - we predict the mint address based on current factory state
+          // console.log("📊 Calculating vault mint PDA for metadata upload...");
+          const [factoryPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("factory_v2")],
+            VAULT_FACTORY_PROGRAM_ID
+          );
+          // console.log("🏭 Factory PDA:", factoryPda.toBase58());
+
+          // Fetch factory account to get current vault count
+          // console.log("📥 Fetching factory account...");
+          const factory = await (program as any).account.factory.fetch(
+            factoryPda
+          );
+          const vaultIndex = factory.vaultCount;
+          // console.log(`📊 Current vault count: ${vaultIndex}`);
+
+          // Calculate vault PDA
+          const [vaultPda] = PublicKey.findProgramAddressSync(
+            [
+              Buffer.from("vault"),
+              factoryPda.toBuffer(),
+              new anchor.BN(vaultIndex).toArrayLike(Buffer, "le", 4),
+            ],
+            VAULT_FACTORY_PROGRAM_ID
+          );
+
+          // Calculate vault mint PDA (needed for Token Extensions format in additionalMetadata)
+          const [vaultMintPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("vault_mint"), vaultPda.toBuffer()],
+            VAULT_FACTORY_PROGRAM_ID
+          );
+          // console.log("🪙 Vault Mint PDA:", vaultMintPda.toBase58());
+
+          // Use default logo if no custom logo is provided
+          const DEFAULT_LOGO_IPFS_CID =
+            "bafkreigiksodcqfilcu447plm36gdhiv5espk4rv4j2iyqpyj3gpng6mfa";
+          const pinataGateway = import.meta.env.VITE_PINATA_GATEWAY_API
+            ? `https://${import.meta.env.VITE_PINATA_GATEWAY_API}`
+            : "https://red-late-constrictor-193.mypinata.cloud";
+          const DEFAULT_LOGO_URL = `${pinataGateway}/ipfs/${DEFAULT_LOGO_IPFS_CID}`;
+          const logoUrl = imageData.logoUrl || DEFAULT_LOGO_URL;
+
+          // Format underlying assets for metadata
+          const metadataAssets = underlyingAssets.map((asset) => ({
+            mintAddress: asset.mintAddress.toBase58(),
+            mintBps: asset.mintBps,
+          }));
+
+          // Upload metadata to IPFS with vault mint address for Token Extensions format
+          // console.log("📤 Starting metadata upload to Pinata...");
+          const uploadedUri = await uploadMetadataToIPFS({
+            vaultName: vaultConfig.name,
+            vaultSymbol: vaultConfig.symbol,
+            logoUrl: logoUrl,
+            managementFees: percentageToBps(vaultConfig.managementFee),
+            underlyingAssets: metadataAssets,
+            vaultMintAddress: vaultMintPda.toBase58(), // Pass mint address for additionalMetadata
+          });
+          // console.log("✅ Metadata uploaded successfully. URI:", uploadedUri);
+
+          metadataUriToUse = uploadedUri;
+          setMetadataUri(uploadedUri);
+
+          toast({
+            title: "Metadata Uploaded Successfully! ✅",
+            description:
+              "Vault metadata has been uploaded to IPFS and will be stored on-chain.",
+          });
+        } catch (metadataError) {
+          console.error("Failed to upload metadata to IPFS:", metadataError);
+          // Show warning but allow vault creation to proceed
+          toast({
+            title: "Metadata Upload Failed ⚠️",
+            description:
+              "Failed to upload metadata to IPFS. Vault will be created without metadata. You can update it later.",
+            variant: "destructive",
+          });
+          // Continue with empty metadata URI
+          metadataUriToUse = "";
+        } finally {
+          setUploadingMetadata(false);
+        }
+      } else {
+        // Pinata not configured - show warning
+        toast({
+          title: "Pinata Not Configured ⚠️",
+          description:
+            "Pinata JWT token not found. Vault will be created without metadata. Set VITE_PINATA_JWT_TOKEN to enable metadata uploads.",
+          variant: "destructive",
+        });
+      }
+
       // Create vault using the simplified hook (exactly like script.ts)
       const tx = await createVault(
         vaultConfig.name, // vault_name
         vaultConfig.symbol, // vault_symbol
         underlyingAssets, // properly formatted assets
-        percentageToBps(vaultConfig.managementFee) // management_fees in basis points
+        percentageToBps(vaultConfig.managementFee), // management_fees in basis points
+        metadataUriToUse // metadata_uri (IPFS gateway URL)
       );
 
       setDeploySuccess(true);
@@ -811,43 +923,24 @@ const CreateVault = () => {
     } catch (error) {
       console.error("Failed to create vault:", error);
 
-      // Detect insufficient SOL balance errors
-      let errorMessage = "Failed to create vault";
-      if (error instanceof Error) {
-        const errorStr = error.message.toLowerCase();
-        const errorStringified = JSON.stringify(error).toLowerCase();
+      // Parse the error to get user-friendly message
+      const parsedError = parseAnchorError(error);
 
-        // Check for various insufficient funds error patterns
-        if (
-          errorStr.includes("insufficient funds") ||
-          errorStr.includes("insufficient sol") ||
-          errorStr.includes("account has insufficient funds") ||
-          errorStr.includes("not enough sol") ||
-          errorStr.includes("insufficient balance") ||
-          errorStr.includes("exceeded cus meter") ||
-          errorStr.includes("transaction simulation failed") ||
-          errorStringified.includes("insufficient funds") ||
-          errorStringified.includes("insufficient sol") ||
-          errorStringified.includes("0x1") // Solana error code for insufficient funds
-        ) {
-          errorMessage =
-            "Insufficient SOL balance. Please ensure you have enough SOL to cover transaction fees (typically 0.064 - 0.1 SOL) in addition to the 10 USDC vault creation fee.";
-        } else if (
-          errorStr.includes("user rejected") ||
-          errorStr.includes("user cancelled")
-        ) {
-          errorMessage =
-            "Transaction was cancelled. Please try again when ready.";
-        } else {
-          errorMessage = error.message;
-        }
+      // Log detailed error information for debugging
+      if (parsedError.isAnchorError) {
+        console.error("Anchor Error Details:", {
+          code: parsedError.errorCode,
+          name: parsedError.errorName,
+          title: parsedError.title,
+          description: parsedError.description,
+        });
       }
 
-      setDeployError(errorMessage);
+      setDeployError(parsedError.description);
 
       toast({
-        title: "Vault Creation Failed",
-        description: errorMessage,
+        title: parsedError.title,
+        description: parsedError.description,
         variant: "destructive",
       });
     } finally {
@@ -962,29 +1055,47 @@ const CreateVault = () => {
     });
 
     try {
-      // Upload file to S3 using the new API
-      const result = await uploadApi.uploadToS3(file);
+      // Upload file: use Pinata for logo, S3 for banner
+      const result =
+        imageType === "logo"
+          ? await uploadApi.uploadToPinata(file)
+          : await uploadApi.uploadToS3(file);
 
       // Handle different response structures
-      if (result.success && result.data) {
-        // Response has success field and data
+      // Pinata response: { status: "success", data: { gatewayUrl: "..." } }
+      // S3 response: { success: true, data: "..." } or { data: "..." }
+      if (
+        imageType === "logo" &&
+        result.status === "success" &&
+        result.data?.gatewayUrl
+      ) {
+        // Pinata response structure for logo uploads
         setImageData((prev) => {
           const newImageData = {
             ...prev,
-            ...(imageType === "logo"
-              ? { logoUrl: result.data }
-              : { bannerUrl: result.data }),
+            logoUrl: result.data.gatewayUrl,
           };
           return newImageData;
         });
         toast({
           title: "Success",
-          description: `${
-            imageType === "logo" ? "Vault Logo" : "Vault Banner"
-          } uploaded successfully`,
+          description: "Vault Logo uploaded successfully",
+        });
+      } else if (imageType === "banner" && result.success && result.data) {
+        // S3 response structure for banner uploads (has success field)
+        setImageData((prev) => {
+          const newImageData = {
+            ...prev,
+            bannerUrl: result.data,
+          };
+          return newImageData;
+        });
+        toast({
+          title: "Success",
+          description: "Vault Banner uploaded successfully",
         });
       } else if (result.data && typeof result.data === "string") {
-        // Response data is directly the URL string
+        // Response data is directly the URL string (fallback for S3)
         setImageData((prev) => {
           const newImageData = {
             ...prev,
@@ -1312,6 +1423,22 @@ const CreateVault = () => {
                     if (!vaultConfig.symbol) {
                       missingFields.push("Token Symbol");
                     }
+
+                    // Validate token symbol byte size
+                    if (vaultConfig.symbol) {
+                      const symbolBytes = new TextEncoder().encode(
+                        vaultConfig.symbol
+                      ).length;
+                      if (symbolBytes > 10) {
+                        toast({
+                          title: "Token-Symbol too large",
+                          description: `Token symbol must be 10 bytes or less. Current size: ${symbolBytes} bytes.`,
+                          variant: "destructive",
+                        });
+                        return; // Prevent proceeding
+                      }
+                    }
+
                     if (!imageData.logoUrl) {
                       missingFields.push("Vault Logo");
                     }
@@ -1732,9 +1859,16 @@ const CreateVault = () => {
                   variant="hero"
                   className="px-6 sm:px-8 w-full sm:w-auto font-architekt"
                   onClick={handleDeployVault}
-                  disabled={isDeploying || !program || !!error}
+                  disabled={
+                    isDeploying || uploadingMetadata || !program || !!error
+                  }
                 >
-                  {isDeploying ? (
+                  {uploadingMetadata ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Uploading Metadata...
+                    </>
+                  ) : isDeploying ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
                       Deploying...

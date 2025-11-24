@@ -1,6 +1,9 @@
 import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { JupiterToken } from './interfaces/jupiter-token.interface';
 import { AssetAllocationService } from '../asset-allocation/asset-allocation.service';
 import { AssetType, NetworkType, SourceType } from '../asset-allocation/entities/asset-allocation.entity';
@@ -10,20 +13,86 @@ import { CreateLstAssetDto, CreateLstAssetBatchDto } from './dto/create-lst-asse
 export class SolanaTokenService {
   private readonly logger = new Logger(SolanaTokenService.name);
   private readonly JUPITER_API_BASE_URL = 'https://lite-api.jup.ag';
+  private connection: Connection;
 
   constructor(
-    private readonly httpService: HttpService, 
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
     private readonly assetAllocationService: AssetAllocationService
   ) {}
 
   /**
-   * Fetch verified tokens from Jupiter API
+   * Initialize Solana connection based on network
    * @param network - Network type (mainnet or devnet)
-   * @returns Promise<JupiterToken[]> Array of verified tokens
+   */
+  private initializeSolanaConnection(network: NetworkType): void {
+    // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
+    const heliusRpcUrl = this.configService.get('HELIUS_RPC_URL');
+    const solanaRpcUrl = this.configService.get('SOLANA_RPC_URL');
+    
+    let rpcUrl: string;
+    if (heliusRpcUrl) {
+      rpcUrl = heliusRpcUrl;
+      this.logger.log(`Using Helius RPC URL: ${heliusRpcUrl}`);
+    } else if (solanaRpcUrl) {
+      rpcUrl = solanaRpcUrl;
+      this.logger.log(`Using Solana RPC URL: ${solanaRpcUrl}`);
+    } else {
+      // Default RPC URLs based on network
+      if (network === NetworkType.DEVNET) {
+        rpcUrl = 'https://api.devnet.solana.com';
+      } else {
+        rpcUrl = 'https://api.mainnet-beta.solana.com';
+      }
+      this.logger.log(`Using default Solana RPC URL for ${network}: ${rpcUrl}`);
+    }
+    
+    this.connection = new Connection(rpcUrl, 'confirmed');
+  }
+
+  /**
+   * Check the token program type by examining the mint account's owner
+   * @param mintAddress - The mint address to check
+   * @param connection - Solana connection
+   * @returns The program type: 'TOKEN_PROGRAM', 'TOKEN_2022_PROGRAM', or 'UNKNOWN'
+   */
+  private async checkTokenProgram(mintAddress: string, connection: Connection): Promise<string> {
+    try {
+      const mintPubkey = new PublicKey(mintAddress);
+      const mintInfo = await connection.getAccountInfo(mintPubkey);
+      
+      if (!mintInfo) {
+        return 'NOT_FOUND';
+      }
+      
+      const owner = mintInfo.owner.toBase58();
+      const tokenProgramId = TOKEN_PROGRAM_ID.toBase58();
+      const token2022ProgramId = TOKEN_2022_PROGRAM_ID.toBase58();
+      
+      if (owner === tokenProgramId) {
+        return 'TOKEN_PROGRAM';
+      } else if (owner === token2022ProgramId) {
+        return 'TOKEN_2022_PROGRAM';
+      } else {
+        return 'UNKNOWN';
+      }
+    } catch (error) {
+      this.logger.warn(`Error checking token program for ${mintAddress}: ${error.message}`);
+      return 'ERROR';
+    }
+  }
+
+  /**
+   * Fetch verified tokens from Jupiter API and check for old Token Program tokens
+   * @param network - Network type (mainnet or devnet)
+   * @returns Promise<JupiterToken[]> Array of verified tokens (old Token Program only)
    */
   async getVerifiedTokens(network: NetworkType = NetworkType.MAINNET): Promise<JupiterToken[]> {
     try {
       this.logger.log(`Fetching verified tokens from Jupiter API for network: ${network}...`);
+      
+      // Initialize Solana connection
+      this.initializeSolanaConnection(network);
       
       const response = await firstValueFrom(
         this.httpService.get(`${this.JUPITER_API_BASE_URL}/tokens/v2/tag?query=verified&network=${network}`)
@@ -45,102 +114,73 @@ export class SolanaTokenService {
         icon: token.icon
       }));
 
-      this.logger.log(`Processing ${simplifiedTokens.length} tokens for asset allocation creation...`);
+      this.logger.log(`Checking token program types for ${simplifiedTokens.length} tokens...`);
       
-      let successCount = 0;
+      const oldTokenProgramTokens: JupiterToken[] = [];
+      let checkedCount = 0;
+      let tokenProgramCount = 0;
+      let token2022Count = 0;
+      let unknownCount = 0;
       let errorCount = 0;
-      const errors: string[] = [];
 
-      // Process tokens one by one with proper error handling
+      // Process tokens one by one to check their program type
       for (let i = 0; i < simplifiedTokens.length; i++) {
         const token = simplifiedTokens[i];
+        const originalToken = response.data[i];
         
         try {
-          // Check if token already exists in this network to avoid unnecessary creation attempts
-          try {
-            await this.assetAllocationService.findByMintAddressAndNetwork(token.id, network);
-            // If we reach here, token already exists in this network
-            this.logger.debug(`Token ${token.symbol} (${token.id}) already exists in ${network} network, skipping...`);
-            continue;
-          } catch (notFoundError) {
-            // Token doesn't exist in this network, proceed with creation
+          const programType = await this.checkTokenProgram(token.id, this.connection);
+          checkedCount++;
+          
+          if (programType === 'TOKEN_PROGRAM') {
+            tokenProgramCount++;
+            oldTokenProgramTokens.push(token);
+            
+            // Console log the old Token Program token
+            console.log(`[OLD TOKEN PROGRAM] ${token.symbol} (${token.id}) - ${token.name}`, {
+              mintAddress: token.id,
+              name: token.name,
+              symbol: token.symbol,
+              icon: token.icon,
+              decimals: originalToken.decimals || 9,
+              programType: 'TOKEN_PROGRAM'
+            });
+          } else if (programType === 'TOKEN_2022_PROGRAM') {
+            token2022Count++;
+          } else if (programType === 'UNKNOWN') {
+            unknownCount++;
+          } else if (programType === 'NOT_FOUND') {
+            errorCount++;
+            this.logger.warn(`Mint account not found for ${token.symbol} (${token.id})`);
+          } else if (programType === 'ERROR') {
+            errorCount++;
           }
           
-          // Get decimals from the original token data if available
-          const originalToken = response.data[i];
-          const decimals = originalToken.decimals || 9; // Default to 9 if not available
-          
-          await this.assetAllocationService.create({
-            mintAddress: token.id,
-            name: token.name,
-            symbol: token.symbol,
-            logoUrl: token.icon,
-            type: AssetType.CRYPTO,
-            decimals: decimals,
-            active: true,
-            network: network,
-            source: SourceType.JUPITER
-          });
-          
-          successCount++;
-          
           // Log progress every 100 records
-          if (successCount % 100 === 0) {
-            this.logger.log(`Created ${successCount}/${simplifiedTokens.length} asset allocations...`);
+          if (checkedCount % 100 === 0) {
+            this.logger.log(`Checked ${checkedCount}/${simplifiedTokens.length} tokens...`);
           }
           
         } catch (error) {
           errorCount++;
-          
-          // Provide more specific error information
-          let errorType = 'Unknown error';
-          if (error.message?.includes('already exists')) {
-            errorType = 'Duplicate mint address';
-          } else if (error.message?.includes('validation')) {
-            errorType = 'Validation error';
-          } else if (error.message?.includes('network') || error.message?.includes('timeout')) {
-            errorType = 'Network error';
-          }
-          
-          const errorMsg = `Failed to create asset for ${token.symbol} (${token.id}): ${errorType} - ${error.message}`;
-          errors.push(errorMsg);
-          
-          // Log individual errors but continue processing
-          this.logger.warn(errorMsg);
-          
-          // Don't overwhelm the logs - only log every 50 errors
-          if (errorCount % 50 === 0) {
-            this.logger.warn(`Encountered ${errorCount} errors so far...`);
-          }
+          this.logger.warn(`Error processing token ${token.symbol} (${token.id}): ${error.message}`);
         }
         
-        // Small delay to prevent overwhelming the database
+        // Small delay to prevent overwhelming the RPC
         if (i % 10 === 0) {
           await new Promise(resolve => setTimeout(resolve, 10));
         }
       }
 
-      this.logger.log(`Asset allocation creation completed:`);
-      this.logger.log(`- Successfully created: ${successCount}`);
-      this.logger.log(`- Failed: ${errorCount}`);
+      this.logger.log(`Token program check completed:`);
+      this.logger.log(`- Total checked: ${checkedCount}`);
+      this.logger.log(`- Old Token Program (TOKEN_PROGRAM): ${tokenProgramCount}`);
+      this.logger.log(`- Token 2022 Program: ${token2022Count}`);
+      this.logger.log(`- Unknown program: ${unknownCount}`);
+      this.logger.log(`- Errors/Not found: ${errorCount}`);
+      this.logger.log(`- Old Token Program tokens logged to console: ${oldTokenProgramTokens.length}`);
       
-      if (errors.length > 0) {
-        // Categorize errors for better analysis
-        const duplicateErrors = errors.filter(e => e.includes('Duplicate mint address')).length;
-        const validationErrors = errors.filter(e => e.includes('Validation error')).length;
-        const networkErrors = errors.filter(e => e.includes('Network error')).length;
-        const unknownErrors = errors.length - duplicateErrors - validationErrors - networkErrors;
-        
-        this.logger.warn(`Error breakdown:`);
-        this.logger.warn(`- Duplicate mint addresses: ${duplicateErrors}`);
-        this.logger.warn(`- Validation errors: ${validationErrors}`);
-        this.logger.warn(`- Network errors: ${networkErrors}`);
-        this.logger.warn(`- Unknown errors: ${unknownErrors}`);
-        
-        this.logger.warn(`First 10 errors: ${errors.slice(0, 10).join('; ')}`);
-      }
-      
-      return simplifiedTokens;
+      return oldTokenProgramTokens;
 
     } catch (error) {
       this.logger.error('Error fetching verified tokens:', error.message);

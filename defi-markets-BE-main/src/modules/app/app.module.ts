@@ -28,6 +28,7 @@ import { TxEventManagementModule } from "../tx-event-management/tx-event-managem
 import { AssetAllocationModule } from "../asset-allocation/asset-allocation.module";
 import { SolanaTokenModule } from "../solana-token/solana-token.module";
 import { S3BucketModule } from "../s3-bucket/s3-bucket.module";
+import { PinataModule } from "../pinata/pinata.module";
 import { SeedersModule } from "../seeders/seeders.module";
 import { ChartsModule } from "../charts/charts.module";
 import { VaultInsightsModule } from "../vault-insights/vault-insights.module";
@@ -160,6 +161,7 @@ import * as Sentry from "@sentry/nestjs";
     AssetAllocationModule,
     SolanaTokenModule,
     S3BucketModule,
+    PinataModule,
     SeedersModule,
     VaultInsightsModule,
     CronJobModule,
@@ -188,12 +190,14 @@ export class AppModule implements NestModule {
         "api/v1/auth/login",
         "api/v1/auth/register",
         "api/v1/auth/admin/login",
+        "api/v1/solana-tokens/verified",
         // Twitter OAuth
         "api/v1/auth/twitter",
         "api/v1/auth/twitter/callback",
         "api/v1/dashboard/dashboard-statistics",
         "api/v1/dashboard/vault-stats",
         // SIWX public endpoints only
+        
         "api/v1/user/create-nonce",
         "api/v1/user/create-message",
         "api/v1/user/verify",

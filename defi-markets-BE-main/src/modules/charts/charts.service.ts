@@ -584,6 +584,40 @@ export class ChartsService {
       }
       this.logger.log("totalUsdInLamports", totalUsdInLamports);
 
+      // Add vault USDC stablecoin account balance to totalAssets
+      let vaultUsdcBalance = 0;
+      try {
+        const vaultStablecoinAccount = this.pdaVaultStablecoin(vault);
+        this.logger.log(
+          `💵 Fetching vault USDC stablecoin account: ${vaultStablecoinAccount.toBase58()}`
+        );
+        
+        const stablecoinAccount = await getAccount(
+          this.connection,
+          vaultStablecoinAccount
+        );
+        vaultUsdcBalance = Number(stablecoinAccount.amount);
+        
+        // USDC has 6 decimals, so the raw amount is already in the correct format (6 decimals)
+        const usdcValueUsd = vaultUsdcBalance / 1_000_000;
+        this.logger.log(
+          `💰 Vault USDC Balance: ${vaultUsdcBalance} raw units = $${usdcValueUsd.toFixed(6)} USD`
+        );
+        
+        // Add USDC balance to totalAssets
+        totalUsdInLamports += vaultUsdcBalance;
+        totalUsd += usdcValueUsd;
+        
+        this.logger.log(
+          `📊 Updated Total Assets (including USDC): ${totalUsdInLamports.toLocaleString()} lamports = $${totalUsd.toFixed(6)} USD`
+        );
+      } catch (error: any) {
+        this.logger.warn(
+          `⚠️ Could not fetch vault USDC stablecoin balance: ${error.message}. Continuing without USDC balance.`
+        );
+        // Continue without USDC balance if account doesn't exist or fetch fails
+      }
+
       const contractData = {
         vaultIndex,
         totalAssets: Number(totalUsdInLamports),

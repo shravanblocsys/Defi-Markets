@@ -805,6 +805,38 @@ export const uploadApi = {
       return result;
     });
   },
+  uploadToPinata: (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const url = `${API_BASE_URL}/pinata/upload-image`;
+    const token = sessionStorage.getItem("token");
+
+    return fetch(url, {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    }).then(async (response) => {
+      console.log("Pinata upload response status:", response.status);
+      console.log("Pinata upload response headers:", response.headers);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error("Pinata upload error response:", errorData);
+        throw new ApiError(
+          errorData.message || `HTTP error! status: ${response.status}`,
+          response.status,
+          errorData.code
+        );
+      }
+
+      const result = await response.json();
+      console.log("Pinata upload success response:", result);
+      return result;
+    });
+  },
 };
 
 // Asset Allocation API

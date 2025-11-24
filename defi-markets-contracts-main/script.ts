@@ -3,6 +3,11 @@ import { PublicKey, SystemProgram, Connection, Keypair, SYSVAR_RENT_PUBKEY } fro
 import { TOKEN_PROGRAM_ID, createMint, createAccount, mintTo, getAccount, getMint, getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getOrCreateAssociatedTokenAccount, createAssociatedTokenAccount } from "@solana/spl-token";
 import { VaultMvp } from "./target/types/vault_mvp";
 import idl from "./target/idl/vault_mvp.json";
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
+// Metaplex Token Metadata Program ID
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 const WALLET_ADDRESS = "CfPWebeQs8HqdUx1Y7bjsywAwAQmnmRYHo5eQstbQAgY";
 // Example token mint addresses (replace with actual token mints)
@@ -12,7 +17,7 @@ const USDC_MINT = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
 // Store created stablecoin mint address
 let CREATED_STABLECOIN_MINT: PublicKey | null = null;
 
-
+const PRIVATE_KEY = readFileSync(join(__dirname, 'keypairs/admin-keypair.json'), 'utf8');
 
 // Hardcoded stablecoin mint address (created earlier)
 const STABLECOIN_MINT = new PublicKey("E1QTr64giwB8pbPSx2Cj64fNi5sUriEAViAu1F6kQD4m");
@@ -186,6 +191,358 @@ async function initializeFactory() {
   }
 }
 
+/**
+ * Upload metadata JSON to IPFS using Pinata
+ * You can also use NFT.Storage, Web3.Storage, or any other IPFS service
+ * 
+ * @param metadata - The metadata object to upload
+ * @param logoUrl - URL to the token logo (can be IPFS URL or HTTP URL)
+ * @returns IPFS URI (e.g., "ipfs://Qm...")
+ */
+async function uploadMetadataToIPFS(
+  vaultName: string,
+  vaultSymbol: string,
+  logoUrl: string,
+  managementFees: number,
+  underlyingAssets: any[],
+  vaultMintAddress?: string
+): Promise<string> {
+  // Pinata gateway URL
+  const PINATA_GATEWAY = "https://red-late-constrictor-193.mypinata.cloud";
+  
+  // Option 1: Using Pinata (requires PINATA_JWT_TOKEN environment variable)
+  // Get your JWT from https://app.pinata.cloud/
+  // Support both PINATA_JWT_TOKEN and PINATA_JWT for backward compatibility
+  const PINATA_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiIyYTdjMzJkZi1iNGRiLTQ0NDQtYWExMC0zNzI0YmFmNzg2ZTkiLCJlbWFpbCI6ImJsb2NkZXY0QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiJkOGU5NDQ1ZDU2NmM3NzViMDdhNiIsInNjb3BlZEtleVNlY3JldCI6ImU4NWJiNWRiYzVmNWU1NzFmNjIxYWIxODkzYzIwY2I4ZjkyZmEyYWJkNWE4NmNiNDNmNDA4NzAxYWE1MjA4ZTIiLCJleHAiOjE3OTQ2MzU0OTB9.oJiNM_YXiQy5LkVU3rKSsOtdjRBpZatISNv9jsDZHJo";
+  
+  if (PINATA_JWT) {
+    try {
+      // Convert IPFS URI to HTTP URL using Pinata gateway if needed
+      // Always use gateway URL for image field so browsers can load it
+      let imageUrl = logoUrl;
+      if (logoUrl.startsWith('ipfs://')) {
+        const ipfsHash = logoUrl.replace('ipfs://', '');
+        imageUrl = `${PINATA_GATEWAY}/ipfs/${ipfsHash}`;
+        console.log(`🖼️ Converted IPFS image URI to gateway URL: ${imageUrl}`);
+      } else if (!logoUrl.startsWith('http://') && !logoUrl.startsWith('https://')) {
+        // If it's just a hash without ipfs:// prefix, add gateway
+        imageUrl = `${PINATA_GATEWAY}/ipfs/${logoUrl}`;
+        console.log(`🖼️ Added gateway to image hash: ${imageUrl}`);
+      } else if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
+        // Already an HTTP URL, use as-is
+        console.log(`🖼️ Using provided HTTP image URL: ${imageUrl}`);
+      }
+
+      // Standard NFT metadata format
+      const metadata = {
+        name: vaultName,
+        symbol: vaultSymbol,
+        description: `A DeFi vault token representing shares in ${vaultName}. Management fee: ${managementFees / 100}%`,
+        image: imageUrl, // Use gateway HTTP URL (not ipfs://) so browsers can load it
+        attributes: [
+          {
+            trait_type: "Management Fee",
+            value: `${managementFees / 100}%`
+          },
+          {
+            trait_type: "Underlying Assets",
+            value: underlyingAssets.length.toString()
+          }
+        ],
+        properties: {
+          category: "DeFi Vault",
+          vault_type: "Multi-Asset"
+        },
+        // Token Extensions format in additionalMetadata
+        additionalMetadata: [
+          {
+            mint: vaultMintAddress || "", // Will be set after mint creation
+            name: vaultName,
+            symbol: vaultSymbol,
+            updateAuthority: null,
+            uri: "" // Will be set after upload
+          }
+        ]
+      };
+
+      // Create a sanitized filename from vault name
+      const sanitizedVaultName = vaultName.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50);
+      const fileName = `${sanitizedVaultName}_${vaultSymbol}_metadata.json`;
+      console.log(`📤 Uploading metadata to Pinata with name: ${fileName}`);
+      
+      const pinataData = {
+        pinataMetadata: {
+          name: fileName,
+          keyvalues: {
+            vaultName: vaultName,
+            vaultSymbol: vaultSymbol,
+            type: 'vault_metadata'
+          }
+        },
+        pinataContent: metadata
+      };
+
+      const response = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${PINATA_JWT}`
+        },
+        body: JSON.stringify(pinataData)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Pinata upload failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const ipfsHash = result.IpfsHash;
+      const ipfsUri = `ipfs://${ipfsHash}`;
+      const gatewayUri = `${PINATA_GATEWAY}/ipfs/${ipfsHash}`;
+      
+      // Update metadata with the actual URI and mint address if provided
+      if (vaultMintAddress) {
+        const updatedMetadata = {
+          ...metadata,
+          // Preserve the gateway URL for image (not ipfs://) so browsers can load it
+          image: imageUrl, // Keep the gateway HTTP URL
+          additionalMetadata: [
+            {
+              mint: vaultMintAddress,
+              name: vaultName,
+              symbol: vaultSymbol,
+              updateAuthority: null,
+              uri: gatewayUri // Use gateway URL in additionalMetadata
+            }
+          ]
+        };
+        
+        // Re-upload with complete metadata
+        const updatedFileName = `${sanitizedVaultName}_${vaultSymbol}_metadata_complete.json`;
+        console.log(`📤 Re-uploading complete metadata to Pinata with name: ${updatedFileName}`);
+        const updatedPinataData = {
+          pinataMetadata: {
+            name: updatedFileName,
+            keyvalues: {
+              vaultName: vaultName,
+              vaultSymbol: vaultSymbol,
+              mintAddress: vaultMintAddress,
+              type: 'vault_metadata_complete'
+            }
+          },
+          pinataContent: updatedMetadata
+        };
+        
+        const updateResponse = await fetch('https://api.pinata.cloud/pinning/pinJSONToIPFS', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${PINATA_JWT}`
+          },
+          body: JSON.stringify(updatedPinataData)
+        });
+        
+        if (updateResponse.ok) {
+          const updateResult = await updateResponse.json();
+          const updatedIpfsHash = updateResult.IpfsHash;
+          const updatedGatewayUri = `${PINATA_GATEWAY}/ipfs/${updatedIpfsHash}`;
+          console.log("✅ Metadata uploaded to IPFS with Token Extensions format");
+          console.log(`📝 IPFS URI: ipfs://${updatedIpfsHash}`);
+          console.log(`🌐 Gateway URL: ${updatedGatewayUri}`);
+          console.log(`🖼️ Image URL in JSON metadata: ${imageUrl} (gateway HTTP URL for browser compatibility)`);
+          console.log(`📋 On-chain URI will be: ${updatedGatewayUri} (gateway HTTP URL)`);
+          return updatedGatewayUri; // Return gateway URL for on-chain storage
+        }
+      }
+      
+      console.log("✅ Metadata uploaded to IPFS");
+      console.log(`📝 IPFS URI: ${ipfsUri}`);
+      console.log(`🌐 Gateway URL: ${gatewayUri}`);
+      console.log(`🖼️ Image URL in JSON metadata: ${imageUrl} (gateway HTTP URL for browser compatibility)`);
+      console.log(`📋 On-chain URI will be: ${gatewayUri} (gateway HTTP URL)`);
+      return gatewayUri; // Return gateway URL for on-chain storage
+    } catch (error) {
+      console.error("❌ Pinata upload error:", error);
+      throw error;
+    }
+  }
+
+  // Option 2: Using NFT.Storage (requires NFT_STORAGE_API_KEY environment variable)
+  const NFT_STORAGE_API_KEY = process.env.NFT_STORAGE_API_KEY;
+  
+  if (NFT_STORAGE_API_KEY) {
+    try {
+      // Convert IPFS URI to HTTP URL using Pinata gateway if needed
+      // Always use gateway URL for image field so browsers can load it
+      let imageUrl = logoUrl;
+      if (logoUrl.startsWith('ipfs://')) {
+        const ipfsHash = logoUrl.replace('ipfs://', '');
+        imageUrl = `${PINATA_GATEWAY}/ipfs/${ipfsHash}`;
+        console.log(`🖼️ Converted IPFS image URI to gateway URL: ${imageUrl}`);
+      } else if (!logoUrl.startsWith('http://') && !logoUrl.startsWith('https://')) {
+        // If it's just a hash without ipfs:// prefix, add gateway
+        imageUrl = `${PINATA_GATEWAY}/ipfs/${logoUrl}`;
+        console.log(`🖼️ Added gateway to image hash: ${imageUrl}`);
+      } else if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
+        // Already an HTTP URL, use as-is
+        console.log(`🖼️ Using provided HTTP image URL: ${imageUrl}`);
+      }
+
+      const metadata = {
+        name: vaultName,
+        symbol: vaultSymbol,
+        description: `A DeFi vault token representing shares in ${vaultName}. Management fee: ${managementFees / 100}%`,
+        image: imageUrl, // Use gateway HTTP URL (not ipfs://) so browsers can load it
+        attributes: [
+          {
+            trait_type: "Management Fee",
+            value: `${managementFees / 100}%`
+          },
+          {
+            trait_type: "Underlying Assets",
+            value: underlyingAssets.length.toString()
+          }
+        ],
+        // Token Extensions format in additionalMetadata
+        additionalMetadata: [
+          {
+            mint: vaultMintAddress || "",
+            name: vaultName,
+            symbol: vaultSymbol,
+            updateAuthority: null,
+            uri: ""
+          }
+        ]
+      };
+
+      const response = await fetch('https://api.nft.storage/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${NFT_STORAGE_API_KEY}`
+        },
+        body: JSON.stringify(metadata)
+      });
+
+      if (!response.ok) {
+        throw new Error(`NFT.Storage upload failed: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      const ipfsHash = result.value.cid;
+      const ipfsUri = `ipfs://${ipfsHash}`;
+      const gatewayUri = `${PINATA_GATEWAY}/ipfs/${ipfsHash}`;
+      
+      // Update metadata with the actual URI and mint address if provided
+      if (vaultMintAddress) {
+        const updatedMetadata = {
+          ...metadata,
+          // Preserve the gateway URL for image (not ipfs://) so browsers can load it
+          image: imageUrl, // Keep the gateway HTTP URL
+          additionalMetadata: [
+            {
+              mint: vaultMintAddress,
+              name: vaultName,
+              symbol: vaultSymbol,
+              updateAuthority: null,
+              uri: gatewayUri // Use gateway URL in additionalMetadata
+            }
+          ]
+        };
+        
+        // Re-upload with complete metadata
+        const updateResponse = await fetch('https://api.nft.storage/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${NFT_STORAGE_API_KEY}`
+          },
+          body: JSON.stringify(updatedMetadata)
+        });
+        
+        if (updateResponse.ok) {
+          const updateResult = await updateResponse.json();
+          const updatedIpfsHash = updateResult.value.cid;
+          const updatedGatewayUri = `${PINATA_GATEWAY}/ipfs/${updatedIpfsHash}`;
+          console.log("✅ Metadata uploaded to IPFS with Token Extensions format");
+          console.log(`📝 IPFS URI: ipfs://${updatedIpfsHash}`);
+          console.log(`🌐 Gateway URL: ${updatedGatewayUri}`);
+          console.log(`🖼️ Image URL in JSON metadata: ${imageUrl} (gateway HTTP URL for browser compatibility)`);
+          console.log(`📋 On-chain URI will be: ${updatedGatewayUri} (gateway HTTP URL)`);
+          return updatedGatewayUri; // Return gateway URL for on-chain storage
+        }
+      }
+      
+      console.log("✅ Metadata uploaded to IPFS");
+      console.log(`📝 IPFS URI: ${ipfsUri}`);
+      console.log(`🌐 Gateway URL: ${gatewayUri}`);
+      console.log(`🖼️ Image URL in JSON metadata: ${imageUrl} (gateway HTTP URL for browser compatibility)`);
+      console.log(`📋 On-chain URI will be: ${gatewayUri} (gateway HTTP URL)`);
+      return gatewayUri; // Return gateway URL for on-chain storage  
+    } catch (error) {
+      console.error("❌ NFT.Storage upload error:", error);
+      throw error;
+    }
+  }
+
+  // Fallback: Return empty string if no IPFS service is configured
+  // You can manually upload the metadata and provide the URI
+  console.warn("⚠️ No IPFS service configured. Set PINATA_JWT_TOKEN (or PINATA_JWT) or NFT_STORAGE_API_KEY environment variable.");
+  console.warn("⚠️ Using empty metadata URI. You can update it later using UpdateMetadataAccountV2 instruction.");
+  return "";
+}
+
+/**
+ * Upload logo image to IPFS (optional - you can also host it elsewhere)
+ * @param imagePath - Path to the image file
+ * @returns IPFS URL of the uploaded image
+ * 
+ * Note: This requires the 'form-data' package. Install it with: npm install form-data
+ * Or use a simpler approach: upload the image manually to IPFS and use the URL
+ */
+async function uploadLogoToIPFS(imagePath: string): Promise<string> {
+  // Support both PINATA_JWT_TOKEN and PINATA_JWT for backward compatibility
+  const PINATA_JWT = process.env.PINATA_JWT_TOKEN || process.env.PINATA_JWT;
+  
+  if (!PINATA_JWT) {
+    throw new Error("PINATA_JWT_TOKEN or PINATA_JWT not set. Cannot upload logo to IPFS.");
+  }
+
+  try {
+    const fs = require('fs');
+    const FormData = require('form-data');
+    const imageBuffer = fs.readFileSync(imagePath);
+    
+    const formData = new FormData();
+    formData.append('file', imageBuffer, {
+      filename: 'logo.png',
+      contentType: 'image/png'
+    });
+
+    const response = await fetch('https://api.pinata.cloud/pinning/pinFileToIPFS', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${PINATA_JWT}`,
+        ...formData.getHeaders()
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`Pinata image upload failed: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    const ipfsHash = result.IpfsHash;
+    const ipfsUrl = `ipfs://${ipfsHash}`;
+    console.log("✅ Logo uploaded to IPFS:", ipfsUrl);
+    return ipfsUrl;
+  } catch (error) {
+    console.error("❌ Logo upload error:", error);
+    throw error;
+  }
+}
+
 // Helper function to create vault
 async function createVault(factoryPDA: PublicKey) {
   console.log("🏦 Creating Vault...");
@@ -219,6 +576,18 @@ async function createVault(factoryPDA: PublicKey) {
     console.log("🪙 Vault Mint PDA:", vaultMintPDA.toBase58());
     console.log("💳 Vault Token Account PDA:", vaultTokenAccountPDA.toBase58());
 
+    // Calculate metadata account PDA
+    // Metadata PDA seeds: ["metadata", TOKEN_METADATA_PROGRAM_ID, mint]
+    const [metadataAccountPDA] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("metadata"),
+        TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+        vaultMintPDA.toBuffer(),
+      ],
+      TOKEN_METADATA_PROGRAM_ID
+    );
+    console.log("📝 Metadata Account PDA:", metadataAccountPDA.toBase58());
+
     // Define underlying assets (50% TUSDT, 50% TETH)
     const TUSDT_MINT = new PublicKey("EnPkqHCtuwUKusntsvAhvCp27SEuqZbAHTgbL16oLcNN");
     const TETH_MINT = new PublicKey("7JLSv65QBmLfkCQrSYPgW8qezH5L8wC9gw5X38DrAgGk");
@@ -239,97 +608,72 @@ async function createVault(factoryPDA: PublicKey) {
     const WFTM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WFTM mint if exists
     const WONE_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WONE mint if exists
     const WXRP_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXRP mint if exists
-    const WXLM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXLM mint if exists
-    const WXM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXMR mint if exists
-    const WOE_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WONE mint if exists
-    const WXP_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXRP mint if exists
-    const WLM_MINT = new PublicKey("So11111111111111111111111111111111111111112"); // Placeholder - replace with actual WXLM mint if exists
     
-    // 21 assets to fit within Solana transaction size limit (1232 bytes)
+    // 16 assets with equal distribution (10000 / 16 = 625 BPS each)
     const underlyingAssets = [
       {
         mintAddress: TUSDT_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: TETH_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: SOL_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: USDC_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WSOL_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: BTC_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: ETH_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: USDT_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WETH_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WBTC_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WBNB_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WMATIC_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WAVAX_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WFTM_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WONE_MINT,
-        mintBps: 476 // ~4.76%
+        mintBps: 625 // 6.25%
       },
       {
         mintAddress: WXRP_MINT,
-        mintBps: 476 // ~4.76%
-      },
-      {
-        mintAddress: WXLM_MINT,
-        mintBps: 476 // ~4.76%
-      },
-      {
-        mintAddress: WXM_MINT,
-        mintBps: 476 // ~4.76%
-      },
-      {
-        mintAddress: WOE_MINT,
-        mintBps: 476 // ~4.76%
-      },
-      {
-        mintAddress: WXP_MINT,
-        mintBps: 478 // ~4.78%
-      },
-      {
-        mintAddress: WLM_MINT,
-        mintBps: 478 // ~4.78%
+        mintBps: 625 // 6.25%
       }
     ];
 
@@ -341,6 +685,32 @@ async function createVault(factoryPDA: PublicKey) {
 
     console.log("🎲 Generated Vault Name:", vaultName);
     console.log("🎲 Generated Vault Symbol:", vaultSymbol);
+
+    // Upload metadata to IPFS (including logo)
+    // Option 1: Use a publicly accessible logo URL
+    // Option 2: Upload logo to IPFS first, then use that URL in metadata
+    // Default logo: IPFS-hosted vault logo
+    const DEFAULT_LOGO_IPFS_CID = "bafkreigiksodcqfilcu447plm36gdhiv5espk4rv4j2iyqpyj3gpng6mfa";
+    const DEFAULT_LOGO_URL = `https://red-late-constrictor-193.mypinata.cloud/ipfs/${DEFAULT_LOGO_IPFS_CID}`;
+    const logoUrl = DEFAULT_LOGO_URL;
+    console.log("🖼️ Using logo URL:", logoUrl);
+    
+    // Upload metadata with mint address for Token Extensions format
+    let metadataUri = "";
+    try {
+      metadataUri = await uploadMetadataToIPFS(
+        vaultName,
+        vaultSymbol,
+        logoUrl,
+        200, // management fees
+        underlyingAssets,
+        vaultMintPDA.toBase58() // Pass mint address for Token Extensions format
+      );
+      console.log("📝 Metadata URI to be stored on-chain:", metadataUri);
+    } catch (error) {
+      console.warn("⚠️ Failed to upload metadata to IPFS, using empty URI:", error);
+      metadataUri = ""; // Will use empty URI if upload fails
+    }
 
     // Prepare stablecoin accounts for creation fee (10 USDC)
     // Use STABLECOIN_MINT as the USDC-equivalent mint
@@ -395,7 +765,8 @@ async function createVault(factoryPDA: PublicKey) {
         vaultName,        // vault_name (randomly generated)
         vaultSymbol,      // vault_symbol (randomly generated)
         underlyingAssets,
-        200              // management_fees (2%) - within current factory limits
+        200,             // management_fees (2%) - within current factory limits
+        metadataUri      // metadata_uri (IPFS URI)
       )
       .accountsStrict({
         admin: wallet.publicKey,
@@ -406,6 +777,8 @@ async function createVault(factoryPDA: PublicKey) {
         stablecoinMint: stablecoinMintForFee,
         adminStablecoinAccount: adminStablecoinAccount.address,
         factoryAdminStablecoinAccount: factoryAdminStablecoinAccount.address,
+        tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+        metadataAccount: metadataAccountPDA,
         tokenProgram: TOKEN_PROGRAM_ID,
         systemProgram: SystemProgram.programId,
         rent: SYSVAR_RENT_PUBKEY,
@@ -428,6 +801,46 @@ async function createVault(factoryPDA: PublicKey) {
       totalSupply: vault.totalSupply.toString(),
       createdAt: new Date(vault.createdAt.toNumber() * 1000).toISOString()
     });
+
+    // Verify metadata account was created correctly
+    console.log("\n🔍 Verifying Token Metadata Account...");
+    try {
+      const metadataAccountInfo = await connection.getAccountInfo(metadataAccountPDA);
+      if (metadataAccountInfo) {
+        console.log("✅ Metadata account exists");
+        console.log("📝 Metadata Account PDA:", metadataAccountPDA.toBase58());
+        console.log("📏 Account size:", metadataAccountInfo.data.length, "bytes");
+        
+        // Try to parse metadata (simplified - just check if URI is there)
+        // Metaplex V3 structure is more complex, but we can at least verify the account exists
+        console.log("💡 View metadata on Solscan:");
+        console.log(`   https://solscan.io/token/${vaultMintPDA.toBase58()}?cluster=devnet`);
+        console.log("💡 View metadata on Solana Explorer:");
+        console.log(`   https://explorer.solana.com/address/${vaultMintPDA.toBase58()}?cluster=devnet`);
+        console.log("💡 View IPFS metadata:");
+        if (metadataUri) {
+          // metadataUri is now already a gateway URL
+          console.log(`   ${metadataUri}`);
+          // Also show the IPFS URI for reference
+          if (metadataUri.includes('/ipfs/')) {
+            const ipfsHash = metadataUri.split('/ipfs/')[1];
+            console.log(`   IPFS URI: ipfs://${ipfsHash}`);
+          }
+        } else {
+          console.log("   ⚠️ No metadata URI was set");
+        }
+      } else {
+        console.log("❌ Metadata account not found!");
+      }
+    } catch (error) {
+      console.warn("⚠️ Could not verify metadata account:", error);
+    }
+
+    console.log("\n📋 Summary:");
+    console.log("   Vault Mint:", vaultMintPDA.toBase58());
+    console.log("   Token Account:", vaultTokenAccountPDA.toBase58());
+    console.log("   Metadata Account:", metadataAccountPDA.toBase58());
+    console.log("   Metadata URI:", metadataUri || "(empty)");
 
     return vaultPDA;
   } catch (err) {
@@ -803,7 +1216,7 @@ async function distributeAccruedFees(factoryPDA: PublicKey, vaultIndex: number) 
 
     // Distribute accrued fees
     const tx = await program.methods
-      .distributeAccruedFees(vaultIndex)
+      .distributeAccruedFees(vaultIndex, new anchor.BN(0))
       .accountsStrict({
         collector: keypair.publicKey,
         factory: factoryPDA,

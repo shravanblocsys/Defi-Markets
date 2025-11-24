@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { HttpModule } from '@nestjs/axios';
+import { ConfigModule } from '@nestjs/config';
 import { SolanaTokenService } from './solana-token.service';
 import { SolanaTokenController } from './solana-token.controller';
 import { AssetAllocationModule } from '../asset-allocation/asset-allocation.module';
@@ -13,6 +14,7 @@ import { AssetAllocationModule } from '../asset-allocation/asset-allocation.modu
         'User-Agent': 'DeFi-Markets-BE/1.0',
       },
     }),
+    ConfigModule,
     AssetAllocationModule
   ],
   providers: [SolanaTokenService],

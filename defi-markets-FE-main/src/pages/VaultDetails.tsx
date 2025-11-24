@@ -267,6 +267,12 @@ const VaultDetails = () => {
 
   // Fetch TVL/NAV from API
   const fetchVaultTVL = async (vaultId: string) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault TVL: invalid vault ID", vaultId);
+      setVaultTVL({ totalUsd: 0, loading: false });
+      return;
+    }
     try {
       setVaultTVL((prev) => ({ ...prev, loading: true }));
       const response = await chartApi.getVaultTotalUSD([vaultId]);
@@ -498,6 +504,37 @@ const VaultDetails = () => {
     return new anchor.BN(combined === "" ? "0" : combined);
   };
 
+  // Refresh share price data before deposit/redeem to ensure fresh values
+  const refreshSharePriceData = async () => {
+    if (!vault?._id) return;
+
+    try {
+      // Refresh TVL/NAV data (used for share price calculation)
+      await fetchVaultTVL(vault._id);
+
+      // Refresh vault details to get fresh totalTokens
+      const response = await vaultsApi.getById(vault._id);
+      if (response.status === "success" && response.data) {
+        setVault((prev) => ({
+          ...prev,
+          ...response.data,
+          totalTokens: response.data.totalTokens || prev?.totalTokens,
+        }));
+      }
+
+      // Refresh valuation if available
+      if (refetchValuation) {
+        await refetchValuation();
+      }
+
+      // Small delay to ensure state updates are reflected
+      await delay(200);
+    } catch (error) {
+      console.error("Error refreshing share price data:", error);
+      // Continue with deposit even if refresh fails - will use existing data
+    }
+  };
+
   // Compute ETF share price from current state with sensible fallbacks
   const computeEtfSharePriceRaw = () => {
     // Prefer live NAV and total supply if available
@@ -513,7 +550,7 @@ const VaultDetails = () => {
     ) {
       sharePrice = vaultMetrics.dtfSharePrice;
     }
-    
+
     return toRawUnits(String(sharePrice), 6);
   };
 
@@ -745,6 +782,12 @@ const VaultDetails = () => {
     }
 
     setDepositing(true);
+    setDepositStep("Refreshing share price...");
+    setDepositStepIndex(0);
+
+    // Refresh share price data before deposit to ensure fresh values
+    await refreshSharePriceData();
+
     setDepositStep("Preparing accounts...");
     setDepositStepIndex(0);
     // Store the actual deposit amount for success popup
@@ -921,30 +964,63 @@ const VaultDetails = () => {
         setDepositStep("Processing deposit...");
         setDepositStepIndex(3);
         await delay(500); // Small delay to show the step
-        // console.log("🔄 Starting swap process for vault:", vault.vaultIndex);
-        // Compute net USDC after entry + management fees to send for swaps
+
+        // NOTE: The smart contract's deposit() function already deducts the entry fee
+        // The vault's stablecoin account now contains: rawAmount - entryFee
+        // We need to calculate what's actually in the vault and send that to the swap API
+
+        console.log("🔄 ===== SWAP CALCULATION DEBUG ===== ");
+        console.log("📝 Original deposit amount:", depositAmount);
+        console.log("🔢 rawAmount (full amount):", rawAmount.toString());
+        console.log(
+          "🔢 rawAmount (USDC):",
+          (Number(rawAmount.toString()) / 1e6).toFixed(6)
+        );
+
+        // Calculate entry fee that was deducted by the smart contract
         const entryFeeBps = vaultFees?.entryFeeBps ?? 0;
-        const mgmtFeeBps = vaultFees?.vaultManagementFees ?? 0;
-        const totalFeeBps = entryFeeBps + mgmtFeeBps;
-        const feeAmountRaw = rawAmount
-          .mul(new anchor.BN(totalFeeBps))
+        const entryFeeRaw = rawAmount
+          .mul(new anchor.BN(entryFeeBps))
           .div(new anchor.BN(10000));
-        let netAmountRaw = rawAmount.sub(feeAmountRaw);
+
+        // Calculate net amount that's actually in the vault after entry fee deduction
+        let netAmountRaw = rawAmount.sub(entryFeeRaw);
         if (netAmountRaw.isNeg()) netAmountRaw = new anchor.BN(0);
-        // console.log(
-        //   "🔄 amountInRaw (net after fees):",
-        //   netAmountRaw.toString()
-        // );
+
+        console.log("💰 entryFeeBps:", entryFeeBps);
+        console.log("💰 entryFeeRaw:", entryFeeRaw.toString());
+        console.log(
+          "💰 entryFeeRaw (USDC):",
+          (Number(entryFeeRaw.toString()) / 1e6).toFixed(6)
+        );
+        console.log(
+          "📤 netAmountRaw (vault balance):",
+          netAmountRaw.toString()
+        );
+        console.log(
+          "📤 netAmountRaw (USDC):",
+          (Number(netAmountRaw.toString()) / 1e6).toFixed(6)
+        );
+        console.log("💡 Vault stablecoin account has: rawAmount - entryFee");
+        console.log("💡 Using netAmountRaw for swap API call");
+
         setDepositStep("Executing swaps...");
         setDepositStepIndex(4);
         await delay(500); // Small delay to show the step
+
+        // Use the net amount (rawAmount - entryFee) that's actually in the vault
         const swapResponse = await transactionEventApi.adminSwapByVault({
           vaultIndex: vault.vaultIndex,
-          amountInRaw: netAmountRaw.toString(),
+          amountInRaw: netAmountRaw.toString(), // Net amount after entry fee
           etfSharePriceRaw: etfSharePriceRaw.toString(),
         });
 
-        // console.log("✅ Swap completed successfully:", swapResponse);
+        console.log("📡 API Request sent:", {
+          vaultIndex: vault.vaultIndex,
+          amountInRaw: netAmountRaw.toString(),
+          amountInRawUSDC: (Number(netAmountRaw.toString()) / 1e6).toFixed(6),
+          etfSharePriceRaw: etfSharePriceRaw.toString(),
+        });
 
         // Extract swap signatures from response
         if (
@@ -987,7 +1063,7 @@ const VaultDetails = () => {
             [Buffer.from("factory_v2")],
             VAULT_FACTORY_PROGRAM_ID
           );
-          
+
           // Refresh blockchain data and API data sequentially
           await getVaultFees(fPDA, vault.vaultIndex);
           await getUserDepositDetails(fPDA, vault.vaultIndex);
@@ -995,7 +1071,7 @@ const VaultDetails = () => {
 
           // Additional delay to ensure all state updates are reflected in UI
           await delay(500);
-          
+
           // Show success popup only after all states are updated
           setShowDepositSuccessPopup(true);
         } catch (refreshError) {
@@ -1019,7 +1095,7 @@ const VaultDetails = () => {
             [Buffer.from("factory_v2")],
             VAULT_FACTORY_PROGRAM_ID
           );
-          
+
           // Refresh both blockchain and API data sequentially to avoid 504 timeout
           await getVaultFees(fPDA, vault.vaultIndex);
           await getUserDepositDetails(fPDA, vault.vaultIndex);
@@ -1132,6 +1208,11 @@ const VaultDetails = () => {
   };
 
   const fetchVaultInsights = async (vaultId: string) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault insights: invalid vault ID", vaultId);
+      return;
+    }
     try {
       const response = await vaultsApi.getVaultInsights(vaultId);
       if (response.status === "success" && response.data) {
@@ -1144,6 +1225,11 @@ const VaultDetails = () => {
   };
 
   const fetchVaultPortfolio = async (vaultId: string) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault portfolio: invalid vault ID", vaultId);
+      return;
+    }
     try {
       setPortfolioLoading(true);
       const response = await vaultsApi.getVaultPortfolio(vaultId);
@@ -1173,6 +1259,11 @@ const VaultDetails = () => {
   // };
 
   const fetchVaultFees = async (vaultId: string) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault fees: invalid vault ID", vaultId);
+      return;
+    }
     try {
       setFeesLoading(true);
       const response = await vaultsApi.getVaultFees(vaultId);
@@ -1187,6 +1278,11 @@ const VaultDetails = () => {
   };
 
   const fetchVaultDepositors = async (vaultId: string) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault depositors: invalid vault ID", vaultId);
+      return;
+    }
     try {
       setDepositorsLoading(true);
       const response = await vaultsApi.getVaultDepositors(vaultId);
@@ -1206,6 +1302,11 @@ const VaultDetails = () => {
     page: number = 1,
     limit: number = 20
   ) => {
+    // Guard against undefined or invalid vault IDs
+    if (!vaultId || vaultId === "undefined" || vaultId.trim() === "") {
+      console.warn("Cannot fetch vault activity: invalid vault ID", vaultId);
+      return;
+    }
     try {
       setActivityLoading(true);
       const response = await vaultsApi.getVaultActivity(vaultId, page, limit);
@@ -1244,7 +1345,11 @@ const VaultDetails = () => {
   };
 
   const fetchVaultDetails = async (isRefresh = false) => {
-    if (!id) return;
+    // Guard against undefined or invalid vault IDs
+    if (!id || id === "undefined" || id.trim() === "") {
+      console.warn("Cannot fetch vault details: invalid vault ID", id);
+      return;
+    }
 
     try {
       if (isRefresh) {
@@ -1418,10 +1523,15 @@ const VaultDetails = () => {
       });
       return;
     }
-    if (numericAmount > userDepositAmount) {
+    // Round both values to 6 decimal places before comparison to avoid floating point precision issues
+    const roundedAmount = Math.round(numericAmount * 1000000) / 1000000;
+    const roundedBalance = Math.round(userDepositAmount * 1000000) / 1000000;
+    if (roundedAmount > roundedBalance) {
       toast({
         title: "Insufficient balance",
-        description: `You only have ${userDepositAmount} vault tokens.`,
+        description: `You only have ${userDepositAmount.toFixed(
+          6
+        )} vault tokens.`,
         variant: "destructive",
       });
       return;
@@ -1453,6 +1563,12 @@ const VaultDetails = () => {
     }
 
     setIsRedeeming(true);
+    setRedeemStep("Refreshing share price...");
+    setRedeemStepIndex(0);
+
+    // Refresh share price data before redeem to ensure fresh values
+    await refreshSharePriceData();
+
     setRedeemStep("Preparing accounts...");
     setRedeemStepIndex(0);
     // Clear previous redeem swap signatures
@@ -1617,8 +1733,14 @@ const VaultDetails = () => {
       let finalizeAmountRaw = new anchor.BN(rawVaultTokenAmount.toString());
       let vaultUsdcBalanceBn: anchor.BN | null = null;
       let redeemSwapSigs: string[] = []; // Store swap signatures locally
-      console.log("🔄 Raw vault token amount for redeem:", rawVaultTokenAmount.toString());
-      console.log("🔄 ETF share price raw redeem:", redeemEtfSharePriceRaw.toString());
+      console.log(
+        "🔄 Raw vault token amount for redeem:",
+        rawVaultTokenAmount.toString()
+      );
+      console.log(
+        "🔄 ETF share price raw redeem:",
+        redeemEtfSharePriceRaw.toString()
+      );
       try {
         const adminResp = await transactionEventApi.redeemSwapAdmin({
           vaultIndex: vault.vaultIndex,
@@ -1669,8 +1791,14 @@ const VaultDetails = () => {
       setRedeemStep("Executing transaction...");
       setRedeemStepIndex(3);
       await delay(10000); // Small delay to show the step it takes to execute the transaction
-      console.log("🔄 rawVaultTokenAmount amount raw redeem :", rawVaultTokenAmount.toString());
-      console.log("🔄 Redeem ETF share price raw:", redeemEtfSharePriceRaw.toString());
+      console.log(
+        "🔄 rawVaultTokenAmount amount raw redeem :",
+        rawVaultTokenAmount.toString()
+      );
+      console.log(
+        "🔄 Redeem ETF share price raw:",
+        redeemEtfSharePriceRaw.toString()
+      );
       const finalizeIx = await (vaultFactoryProgram as any).methods
         .finalizeRedeem(
           new anchor.BN(vault.vaultIndex),
@@ -1781,7 +1909,7 @@ const VaultDetails = () => {
           [Buffer.from("factory_v2")],
           VAULT_FACTORY_PROGRAM_ID
         );
-        
+
         // Refresh blockchain data and API data sequentially
         await getVaultFees(fPDA, vault.vaultIndex);
         await getUserDepositDetails(fPDA, vault.vaultIndex);
@@ -1789,7 +1917,7 @@ const VaultDetails = () => {
 
         // Additional delay to ensure all state updates are reflected in UI
         await delay(500);
-        
+
         // Show success popup only after all states are updated
         setShowRedeemSuccessPopup(true);
       } catch (refreshErr) {
@@ -1970,6 +2098,15 @@ const VaultDetails = () => {
             userAddress={address}
             connection={connection}
             totalSupply={vault?.totalTokens}
+            onRefreshUserBalance={async () => {
+              if (vaultFactoryProgram && vault?.vaultIndex && address) {
+                const [factoryPDA] = PublicKey.findProgramAddressSync(
+                  [Buffer.from("factory_v2")],
+                  VAULT_FACTORY_PROGRAM_ID
+                );
+                await getUserDepositDetails(factoryPDA, vault.vaultIndex);
+              }
+            }}
           />
 
           {/* <FinancialsTab

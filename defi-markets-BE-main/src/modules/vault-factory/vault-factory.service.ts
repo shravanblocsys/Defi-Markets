@@ -470,7 +470,8 @@ export class VaultFactoryService {
       .populate([
         {
           path: "creator",
-          select: "name email walletAddress socialLinks avatar",
+          select:
+            "name email walletAddress socialLinks avatar twitter_username",
         },
         {
           path: "underlyingAssets.assetAllocation",
@@ -569,7 +570,8 @@ export class VaultFactoryService {
       .populate([
         {
           path: "creator",
-          select: "name email walletAddress socialLinks avatar",
+          select:
+            "name email walletAddress socialLinks avatar twitter_username",
         },
         {
           path: "underlyingAssets.assetAllocation",

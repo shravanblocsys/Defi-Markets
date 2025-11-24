@@ -136,6 +136,10 @@ Built with a comprehensive design system featuring:
   - `solana/Idl/vaultIdl.json`, `solana/Idl/vaultFactory.ts`
   - `solana/programIds/programids.ts` (program IDs, token mints)
 - Vault creation UX implemented in `src/pages/CreateVault.tsx` with clean implementation documented in `VAULT_CREATION_CLEAN_IMPLEMENTATION.md`
+- **Pinata IPFS Integration**: Automatic metadata upload to IPFS during vault creation
+  - Metadata includes vault name, symbol, description, logo, and attributes
+  - Uses Metaplex Token Metadata Program for on-chain storage
+  - See `src/services/pinata.ts` for implementation details
 
 ```
 ## 📘 API Documentation
@@ -146,7 +150,3 @@ For endpoint details, request/response schemas, and auth flow, see:
 - `VAULT_CREATION_README.md` and `VAULT_CREATION_CLEAN_IMPLEMENTATION.md` (vault creation via Solana programs)
 
 ```
-
-## 🔗 Links
-
-- [Live Demo](https://app.defimarkets.finance/)

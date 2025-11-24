@@ -15,13 +15,21 @@ import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
 import * as anchor from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token";
 import { SOLANA_NETWORKS, SOLANA_RPC_URLS } from "@/lib/solana";
-import { VAULT_FACTORY_PROGRAM_ID } from "@/components/solana/programIds/programids";
+import {
+  VAULT_FACTORY_PROGRAM_ID,
+  TOKEN_METADATA_PROGRAM_ID,
+} from "@/components/solana/programIds/programids";
 import { VAULT_FACTORY_IDL } from "@/components/solana/Idl/vaultFactory";
 
 // Hardcoded stablecoin mint address (created earlier) - same as script.ts
 const STABLECOIN_MINT = new PublicKey(
   "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 );
+
+// Devnet stablecoin mint address
+// const STABLECOIN_MINT = new PublicKey(
+//   "E1QTr64giwB8pbPSx2Cj64fNi5sUriEAViAu1F6kQD4m"
+// );
 
 // Define interface for wallet provider
 interface WalletProvider {
@@ -197,7 +205,8 @@ export function useVaultCreation() {
       vaultName: string,
       vaultSymbol: string,
       underlyingAssets: Array<{ mintAddress: PublicKey; mintBps: number }>,
-      managementFees: number
+      managementFees: number,
+      metadataUri: string = "" // Optional metadata URI (IPFS gateway URL)
     ) => {
       if (!program || !address) {
         throw new Error("Program or wallet not ready");
@@ -245,12 +254,24 @@ export function useVaultCreation() {
           VAULT_FACTORY_PROGRAM_ID
         );
 
+        // Calculate metadata account PDA (for Metaplex Token Metadata)
+        // Metadata PDA seeds: ["metadata", TOKEN_METADATA_PROGRAM_ID, mint]
+        const [metadataAccountPda] = PublicKey.findProgramAddressSync(
+          [
+            Buffer.from("metadata"),
+            TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+            vaultMintPda.toBuffer(),
+          ],
+          TOKEN_METADATA_PROGRAM_ID
+        );
+
         // console.log("🔑 Vault PDA:", vaultPda.toBase58());
         // console.log("🪙 Vault Mint PDA:", vaultMintPda.toBase58());
         // console.log(
         //   "💳 Vault Token Account PDA:",
         //   vaultTokenAccountPda.toBase58()
         // );
+        // console.log("📝 Metadata Account PDA:", metadataAccountPda.toBase58());
 
         // Prepare stablecoin accounts for vault creation fee
         // Factory stores vaultCreationFeeUsdc (e.g., 10000000 = 10 USDC with 6 decimals)
@@ -287,7 +308,13 @@ export function useVaultCreation() {
         // Create vault using the program method exactly like script_min.ts
         // Set compute unit limit to 400,000 to handle complex vault creation with many assets
         const tx = await (program as any).methods
-          .createVault(vaultName, vaultSymbol, underlyingAssets, managementFees)
+          .createVault(
+            vaultName,
+            vaultSymbol,
+            underlyingAssets,
+            managementFees,
+            metadataUri
+          )
           .accountsStrict({
             admin: new PublicKey(address),
             factory: factoryPda,
@@ -297,6 +324,8 @@ export function useVaultCreation() {
             stablecoinMint: stablecoinMintForFee,
             adminStablecoinAccount: adminStablecoinAccountAddress,
             factoryAdminStablecoinAccount: factoryAdminStablecoinAccountAddress,
+            tokenMetadataProgram: TOKEN_METADATA_PROGRAM_ID,
+            metadataAccount: metadataAccountPda,
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
             rent: SYSVAR_RENT_PUBKEY,

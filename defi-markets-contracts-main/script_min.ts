@@ -71,8 +71,12 @@ async function cmdCreate(name?: string, symbol?: string) {
     mintBps: u.mintBps,
   }));
 
+  // Note: You should upload metadata to IPFS first and pass the URI
+  // For now, using empty string - you can update it later
+  const metadataUri = ""; // TODO: Upload metadata to IPFS and set this URI
+  
   const tx = await program.methods
-    .createVault(name || "Auto Vault", symbol || "AUT0", underlying, 200)
+    .createVault(name || "Auto Vault", symbol || "AUT0", underlying, 200, metadataUri)
     .accountsStrict({
       admin: wallet.publicKey,
       factory,

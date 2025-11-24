@@ -111,12 +111,17 @@ async function createVault(factoryPDA: PublicKey) {
     console.log("🎲 Generated Vault Symbol:", vaultSymbol);
 
     // Create vault using snake_case method name
+    // Note: You should upload metadata to IPFS first and pass the URI
+    // For now, using empty string - you can update it later
+    const metadataUri = ""; // TODO: Upload metadata to IPFS and set this URI
+    
     const tx = await program.methods
       .createVault(
         vaultName,        // vault_name (randomly generated)
         vaultSymbol,      // vault_symbol (randomly generated)
         underlyingAssets,
-        100              // management_fees (1%)
+        100,             // management_fees (1%)
+        metadataUri      // metadata_uri (IPFS URI)
       )
       .accountsStrict({
         admin: wallet.publicKey,

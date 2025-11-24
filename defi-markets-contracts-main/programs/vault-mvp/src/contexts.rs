@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{Mint, Token, TokenAccount};
+use anchor_spl::token_interface::{TokenAccount as TokenAccountInterface, TokenInterface};
 use crate::state::*;
 use crate::errors::ErrorCode;
 
@@ -91,6 +92,18 @@ pub struct CreateVault<'info> {
         constraint = factory_admin_stablecoin_account.mint == stablecoin_mint.key()
     )]
     pub factory_admin_stablecoin_account: Account<'info, TokenAccount>,
+
+    /// Metaplex Token Metadata Program
+    /// CHECK: Verified by constraint
+    #[account(
+        constraint = token_metadata_program.key() == mpl_token_metadata::ID @ ErrorCode::InvalidMetadataProgram
+    )]
+    pub token_metadata_program: UncheckedAccount<'info>,
+
+    /// Token Metadata Account (PDA)
+    /// CHECK: Created via CPI to Metaplex program
+    #[account(mut)]
+    pub metadata_account: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -527,7 +540,7 @@ pub struct TransferVaultToUser<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(vault_index: u32, amount: u64)]
+#[instruction(vault_index: u32, amount: u64, decimals: u8)]
 pub struct WithdrawUnderlyingToUser<'info> {
     /// User redeeming (and receiving the asset)
     #[account(mut, signer)]
@@ -548,15 +561,25 @@ pub struct WithdrawUnderlyingToUser<'info> {
     )]
     pub vault: Account<'info, Vault>,
 
-    /// Source: vault's ATA for the asset
+    /// Source: vault's ATA for the asset (supports both SPL Token and Token-2022)
+    /// CHECK: Owner is validated in instruction to match token_program (SPL Token or Token-2022)
+    /// We use AccountInfo to support both token program types
     #[account(mut)]
-    pub vault_asset_account: Account<'info, TokenAccount>,
+    pub vault_asset_account: AccountInfo<'info>,
 
-    /// Destination: user's ATA for the asset
+    /// Destination: user's ATA for the asset (supports both SPL Token and Token-2022)
+    /// CHECK: Owner is validated in instruction to match token_program (SPL Token or Token-2022)
+    /// We use AccountInfo to support both token program types
     #[account(mut)]
-    pub user_asset_account: Account<'info, TokenAccount>,
+    pub user_asset_account: AccountInfo<'info>,
 
-    pub token_program: Program<'info, Token>,
+    /// Mint of the underlying asset (required for Token-2022 transfer_checked)
+    /// CHECK: Mint is passed by frontend and used for transfer_checked.
+    /// We use AccountInfo here because we need to support both SPL Token and Token-2022 mints.
+    pub mint: AccountInfo<'info>,
+
+    /// Token program (supports both SPL Token and Token-2022)
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 
@@ -685,6 +708,49 @@ pub struct DistributeAccruedFees<'info> {
     /// Vault admin's vault token account (receives vault creator share)
     #[account(mut)]
     pub vault_admin_vault_account: Account<'info, TokenAccount>,
+
+    /// Platform fee recipient's vault token account (receives platform share)
+    #[account(mut)]
+    pub fee_recipient_vault_account: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+#[instruction(vault_index: u32)]
+pub struct ClaimManagementFee<'info> {
+    /// Vault creator claiming their management fees
+    #[account(mut, signer)]
+    pub creator: Signer<'info>,
+
+    /// Factory PDA - seeds: ["factory_v2"]
+    #[account(
+        seeds = [b"factory_v2"],
+        bump = factory.bump
+    )]
+    pub factory: Account<'info, Factory>,
+
+    /// Vault PDA - seeds: ["vault", factory.key(), vault_index]
+    #[account(
+        mut,
+        seeds = [b"vault", factory.key().as_ref(), &vault_index.to_le_bytes()],
+        bump = vault.bump,
+        constraint = vault.admin == creator.key() @ ErrorCode::Unauthorized
+    )]
+    pub vault: Account<'info, Vault>,
+
+    /// Vault token mint (for minting fee shares)
+    #[account(
+        mut,
+        seeds = [b"vault_mint", vault.key().as_ref()],
+        bump
+    )]
+    pub vault_mint: Account<'info, Mint>,
+
+    /// Creator's vault token account (receives vault creator share)
+    #[account(mut)]
+    pub creator_vault_account: Account<'info, TokenAccount>,
 
     /// Platform fee recipient's vault token account (receives platform share)
     #[account(mut)]

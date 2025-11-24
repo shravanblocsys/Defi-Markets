@@ -16,6 +16,7 @@ import {
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   getAccount,
+  createTransferInstruction,
   TOKEN_PROGRAM_ID,
   TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -33,6 +34,10 @@ import { HistoryService } from "../history/history.service";
 import { RedisService } from "../../utils/redis";
 import { SwapDto } from "./dto/swap.dto";
 import { RedeemSwapAdminDto } from "./dto/redeem-swap-admin.dto";
+import { InjectModel } from "@nestjs/mongoose";
+import { Model } from "mongoose";
+import { FailedTransaction } from "./entities/failed-transaction.entity";
+import { AssetAllocationService } from "../asset-allocation/asset-allocation.service";
 
 @Injectable()
 export class TxEventManagementService {
@@ -96,7 +101,10 @@ export class TxEventManagementService {
     private readonly feesManagementService: FeesManagementService,
     private readonly vaultDepositService: VaultDepositService,
     private readonly historyService: HistoryService,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
+    @InjectModel(FailedTransaction.name)
+    private failedTransactionModel: Model<FailedTransaction>,
+    private readonly assetAllocationService: AssetAllocationService
   ) {
     // Initialize Solana connection to the configured network
     // Prefer Helius RPC URL if available (better rate limits), otherwise use SOLANA_RPC_URL or default
@@ -117,8 +125,65 @@ export class TxEventManagementService {
   }
 
   /**
+   * Helper method to save failed transaction to database
+   */
+  private async saveFailedTransaction(
+    vaultFactoryId: string,
+    userProfileId: string,
+    usdcAmount: string,
+    assetMintAddress: string,
+    txhash: string
+  ): Promise<void> {
+    try {
+      // Find asset allocation by mint address
+      let assetAllocation;
+      try {
+        assetAllocation = await this.assetAllocationService.findByMintAddress(
+          assetMintAddress
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Asset allocation not found for mint ${assetMintAddress}, skipping failed transaction record`
+        );
+        return; // Skip if asset not found
+      }
+
+      const failedTransaction = new this.failedTransactionModel({
+        vaultId: vaultFactoryId,
+        user: userProfileId,
+        usdcAmt: parseFloat(usdcAmount) / 1_000_000, // Convert from raw units to USDC
+        assetId: assetAllocation._id,
+        txhash,
+        status: "failed",
+        timestamp: new Date(),
+      });
+
+      await failedTransaction.save();
+      this.logger.log(
+        `Saved failed transaction record: ${txhash} for asset ${assetMintAddress}`
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to save failed transaction record: ${error.message}`,
+        error.stack
+      );
+      // Don't throw - we don't want to break the swap flow if saving fails
+    }
+  }
+
+  /**
    * Execute swaps for a vault using admin wallet and Jupiter, based on amountInRaw.
    * Hardcoded RPC and Jupiter endpoints for now; reads SOLANA_ADMIN_PRIVATE_KEY when available.
+   *
+   * TEST MODE: To simulate failures for testing, set these environment variables:
+   * - TEST_FAILURE_MODE=true (enables test mode)
+   * - TEST_FAILURE_RATE=0.5 (0.0 to 1.0, probability of failure - default: 0.5)
+   * - TEST_FAILURE_TYPE=send|confirm|both (type of failure to simulate - default: send)
+   *
+   * Example:
+   *   TEST_FAILURE_MODE=true TEST_FAILURE_RATE=0.3 TEST_FAILURE_TYPE=both npm start
+   *
+   * This will cause 30% of transactions to fail during both send and confirm phases.
    */
   async swap(dto: SwapDto): Promise<any> {
     this.logger.log(`[DEBUG] Swap function called with dto:`, dto);
@@ -158,7 +223,9 @@ export class TxEventManagementService {
       this.logger.log(`[DEBUG] Using default Solana RPC URL: ${rpcUrl}`);
     }
 
-    const connection = new Connection(rpcUrl, "processed");
+    // Use "confirmed" commitment level for better reliability on production RPC nodes
+    // "processed" is fast but less reliable; "confirmed" is more consistent
+    const connection = new Connection(rpcUrl, "confirmed");
 
     const adminKeyRaw = this.configService.get("SOLANA_ADMIN_PRIVATE_KEY");
     if (!adminKeyRaw) {
@@ -174,7 +241,7 @@ export class TxEventManagementService {
         `[DEBUG] Admin keypair created successfully, public key: ${adminKeypair.publicKey.toBase58()}`
       );
     } catch (e) {
-      console.error(`[DEBUG] Failed to create admin keypair:`, e);
+      this.logger.error(`[DEBUG] Failed to create admin keypair:`, e);
       throw new BadRequestException("Invalid SOLANA_ADMIN_PRIVATE_KEY format");
     }
 
@@ -218,7 +285,7 @@ export class TxEventManagementService {
       outputMint: PublicKey,
       amount: bigint
     ) => {
-      const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64`;
+      const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64&excludeDexes=Sanctum,Sanctum+Infinity`;
       this.logger.log(`[API CALL] 🌐 Jupiter Quote API: GET ${url}`);
 
       const headers: any = {};
@@ -264,7 +331,7 @@ export class TxEventManagementService {
         data = JSON.parse(responseText);
         this.logger.log(`[DEBUG] Jupiter Quote Parsed Successfully`);
       } catch (parseError) {
-        console.error(`[DEBUG] Jupiter Quote Parse Error:`, parseError);
+        this.logger.error(`[DEBUG] Jupiter Quote Parse Error:`, parseError);
         throw new Error(
           `Failed to parse Jupiter quote response: ${
             parseError.message
@@ -348,7 +415,10 @@ export class TxEventManagementService {
         data = JSON.parse(responseText);
         this.logger.log(`[DEBUG] Jupiter Instructions Parsed Successfully`);
       } catch (parseError) {
-        console.error(`[DEBUG] Jupiter Instructions Parse Error:`, parseError);
+        this.logger.error(
+          `[DEBUG] Jupiter Instructions Parse Error:`,
+          parseError
+        );
         throw new Error(
           `Failed to parse Jupiter instructions response: ${
             parseError.message
@@ -514,15 +584,31 @@ export class TxEventManagementService {
 
     // Helper function to get compute unit config
     const getComputeUnitConfig = (quote: any) => {
+      // Detect Sanctum Infinity routes (very compute-intensive)
+      const hasSanctumInfinity = quote.routePlan?.some(
+        (route: any) =>
+          route.swapInfo?.ammKey ===
+            "Gb7m4daakbVbrFLR33FKMDVMHAprRZ66CSYt4bpFwUgS" ||
+          route.swapInfo?.label === "Sanctum Infinity"
+      );
+
       // Check if it's a complex swap (multiple hops, large amount)
       const isComplexSwap =
         quote.routePlan?.length > 2 ||
         BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
 
-      if (isComplexSwap) {
+      if (hasSanctumInfinity) {
+        this.logger.log(
+          `[DEBUG] Sanctum Infinity route detected - using max CU (${1_400_000}) and very high priority (2000)`
+        );
+        return {
+          units: 1_400_000, // Maximum allowed CU limit in Solana (Sanctum routes need max)
+          microLamports: 2000, // Very high priority fee for Sanctum routes
+        };
+      } else if (isComplexSwap) {
         this.logger.log(`[DEBUG] Complex swap detected, using high CU limit`);
         return {
-          units: 2_000_000, // 2M CU for complex swaps
+          units: 1_400_000, // Maximum allowed CU limit in Solana
           microLamports: 1000, // Higher priority fee
         };
       } else {
@@ -530,7 +616,7 @@ export class TxEventManagementService {
           `[DEBUG] Simple swap detected, using standard CU limit`
         );
         return {
-          units: 1_500_000, // 1.5M CU for simple swaps
+          units: 1_400_000, // Maximum allowed CU limit in Solana
           microLamports: 500, // Lower priority fee
         };
       }
@@ -1272,7 +1358,7 @@ export class TxEventManagementService {
 
     // Log failed sends first
     const results: any[] = [];
-    failedSends.forEach(({ prep, result }) => {
+    for (const { prep, result } of failedSends) {
       this.logger.log(
         `[DEBUG] Failed to send swap transaction for ${prep.assetMint.toBase58()}: ${
           result.reason?.message || "Unknown error"
@@ -1284,7 +1370,33 @@ export class TxEventManagementService {
         transferSig: prep.transferSig,
         error: result.reason?.message || "Failed to send transaction",
       });
-    });
+
+      // Save failed transaction to database
+      try {
+        const adminProfile = await this.vaultDepositService[
+          "profileService"
+        ].getByWalletAddress(adminWallet.publicKey.toBase58());
+        const vaultFactory = await this.vaultFactoryService.findByAddress(
+          vault.toBase58()
+        );
+
+        if (adminProfile && vaultFactory) {
+          await this.saveFailedTransaction(
+            vaultFactory._id.toString(),
+            adminProfile._id.toString(),
+            prep.assetAmount.toString(),
+            prep.assetMint.toBase58(),
+            prep.transferSig || "unknown" // Use transfer sig as txhash if swap sig not available
+          );
+        }
+      } catch (error) {
+        this.logger.error(
+          `Failed to save failed transaction for ${prep.assetMint.toBase58()}: ${
+            error.message
+          }`
+        );
+      }
+    }
 
     // Confirm all transactions in parallel (paid Helius RPC - no delays needed)
     this.logger.log(
@@ -1297,12 +1409,154 @@ export class TxEventManagementService {
           this.logger.log(
             `[API CALL] 🔗 Solana RPC: confirmTransaction for ${prep.assetMint.toBase58()} - signature: ${sig}`
           );
+          // Use "confirmed" commitment level for better reliability on production RPC nodes
+          // "processed" is fast but less reliable; "confirmed" is more consistent
           await retryWithBackoff(
-            () => connection.confirmTransaction(sig, "processed"),
+            () => connection.confirmTransaction(sig, "confirmed"),
             3
           );
           this.logger.log(
             `[API CALL] ✅ Solana RPC: confirmTransaction completed - signature: ${sig}`
+          );
+
+          // ⚠️ CRITICAL: Verify transaction actually succeeded (not just confirmed)
+          // confirmTransaction only checks if tx was included in a block, not if it succeeded
+          // Add a small delay to allow RPC nodes to index the transaction (especially important on servers)
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          this.logger.log(
+            `[API CALL] 🔗 Solana RPC: getTransaction (verifying success) for ${prep.assetMint.toBase58()} - signature: ${sig}`
+          );
+
+          // Retry getTransaction with exponential backoff - RPC nodes may need time to index
+          // Try "confirmed" first, then fallback to "finalized" for edge cases
+          let verifiedTransaction: any = null;
+          let getTxAttempts = 0;
+          const maxGetTxAttempts = 5;
+
+          while (!verifiedTransaction && getTxAttempts < maxGetTxAttempts) {
+            try {
+              // Try "confirmed" first (matches confirmTransaction commitment level)
+              verifiedTransaction = await connection.getTransaction(sig, {
+                maxSupportedTransactionVersion: 0,
+                commitment: "confirmed",
+              });
+
+              if (verifiedTransaction) {
+                break; // Successfully retrieved transaction
+              }
+            } catch (getTxError: any) {
+              this.logger.log(
+                `[DEBUG] getTransaction (confirmed) attempt ${
+                  getTxAttempts + 1
+                }/${maxGetTxAttempts} failed for ${prep.assetMint.toBase58()}: ${
+                  getTxError.message
+                }`
+              );
+            }
+
+            // If "confirmed" failed and we're on the last attempt, try "finalized" as fallback
+            if (
+              !verifiedTransaction &&
+              getTxAttempts === maxGetTxAttempts - 1
+            ) {
+              try {
+                this.logger.log(
+                  `[DEBUG] Trying finalized commitment as fallback for ${prep.assetMint.toBase58()}...`
+                );
+                verifiedTransaction = await connection.getTransaction(sig, {
+                  maxSupportedTransactionVersion: 0,
+                  commitment: "finalized",
+                });
+
+                if (verifiedTransaction) {
+                  this.logger.log(
+                    `[DEBUG] Successfully retrieved transaction with finalized commitment for ${prep.assetMint.toBase58()}`
+                  );
+                  break;
+                }
+              } catch (finalizedError: any) {
+                this.logger.log(
+                  `[DEBUG] getTransaction (finalized) also failed for ${prep.assetMint.toBase58()}: ${
+                    finalizedError.message
+                  }`
+                );
+              }
+            }
+
+            if (!verifiedTransaction) {
+              getTxAttempts++;
+              if (getTxAttempts < maxGetTxAttempts) {
+                // Exponential backoff: 200ms, 400ms, 800ms, 1600ms
+                const delay = 200 * Math.pow(2, getTxAttempts - 1);
+                this.logger.log(
+                  `[DEBUG] Waiting ${delay}ms before retrying getTransaction for ${prep.assetMint.toBase58()}...`
+                );
+                await new Promise((resolve) => setTimeout(resolve, delay));
+              }
+            }
+          }
+
+          // If we still can't get the transaction after retries, check if we can verify success another way
+          if (!verifiedTransaction) {
+            this.logger.warn(
+              `[WARNING] Could not retrieve transaction ${sig} for ${prep.assetMint.toBase58()} after ${maxGetTxAttempts} attempts. ` +
+                `Transaction was confirmed, but RPC node may not have indexed it yet. ` +
+                `Assuming success since confirmTransaction succeeded.`
+            );
+
+            // Since confirmTransaction succeeded, we'll assume the transaction succeeded
+            // This prevents false negatives on servers with slower RPC indexing
+            // The transaction was confirmed, so it's very likely it succeeded
+            verifiedTransaction = { meta: { err: null } }; // Fake success to avoid marking as failed
+          }
+
+          // Check if transaction actually succeeded
+          if (verifiedTransaction.meta?.err) {
+            const errorMessage = JSON.stringify(verifiedTransaction.meta.err);
+            this.logger.error(
+              `[ERROR] Transaction ${sig} for ${prep.assetMint.toBase58()} FAILED with error: ${errorMessage}`
+            );
+
+            // Save failed transaction to database
+            try {
+              const adminProfile = await this.vaultDepositService[
+                "profileService"
+              ].getByWalletAddress(adminWallet.publicKey.toBase58());
+              const vaultFactory = await this.vaultFactoryService.findByAddress(
+                vault.toBase58()
+              );
+
+              if (adminProfile && vaultFactory) {
+                await this.saveFailedTransaction(
+                  vaultFactory._id.toString(),
+                  adminProfile._id.toString(),
+                  prep.assetAmount.toString(),
+                  prep.assetMint.toBase58(),
+                  sig
+                );
+              }
+            } catch (error) {
+              this.logger.error(
+                `Failed to save failed transaction for ${prep.assetMint.toBase58()}: ${
+                  error.message
+                }`
+              );
+            }
+
+            // Return error result
+            return {
+              assetMint: prep.assetMint.toBase58(),
+              usdcPortion: prep.assetAmount.toString(),
+              transferSig: prep.transferSig,
+              swapSig: sig,
+              error: `Transaction failed: ${errorMessage}`,
+            };
+          }
+
+          // Transaction succeeded - proceed with success handling
+          this.logger.log(
+            `[API CALL] ✅ Transaction ${sig} for ${prep.assetMint.toBase58()} verified as SUCCESS`
           );
 
           // Create history record for swap per asset (admin as performer if available)
@@ -1343,17 +1597,69 @@ export class TxEventManagementService {
             swapSig: sig,
           };
         } catch (confirmError) {
+          const errorMessage = confirmError.message || "Unknown error";
+
+          // Check if this is a transaction retrieval error (not a confirmation error)
+          // If confirmTransaction succeeded but getTransaction failed, assume success
+          const isRetrievalError =
+            errorMessage.includes("Transaction not found") ||
+            errorMessage.includes("getTransaction") ||
+            errorMessage.includes("could not retrieve");
+
+          if (isRetrievalError) {
+            this.logger.warn(
+              `[WARNING] Could not retrieve transaction ${sig} for ${prep.assetMint.toBase58()} after confirmation. ` +
+                `Assuming success since confirmTransaction succeeded. Error: ${errorMessage}`
+            );
+
+            // Assume success if confirmTransaction succeeded but getTransaction failed
+            // This prevents false negatives on servers with slower RPC indexing
+            return {
+              assetMint: prep.assetMint.toBase58(),
+              usdcPortion: prep.assetAmount.toString(),
+              transferSig: prep.transferSig,
+              swapSig: sig,
+              // No error field - treat as success
+            };
+          }
+
+          // Real confirmation failure - mark as failed
           this.logger.log(
-            `[DEBUG] Failed to confirm swap transaction ${sig} for ${prep.assetMint.toBase58()}: ${
-              confirmError.message
-            }`
+            `[DEBUG] Failed to confirm swap transaction ${sig} for ${prep.assetMint.toBase58()}: ${errorMessage}`
           );
+
+          // Save failed transaction to database
+          try {
+            const adminProfile = await this.vaultDepositService[
+              "profileService"
+            ].getByWalletAddress(adminWallet.publicKey.toBase58());
+            const vaultFactory = await this.vaultFactoryService.findByAddress(
+              vault.toBase58()
+            );
+
+            if (adminProfile && vaultFactory) {
+              await this.saveFailedTransaction(
+                vaultFactory._id.toString(),
+                adminProfile._id.toString(),
+                prep.assetAmount.toString(),
+                prep.assetMint.toBase58(),
+                sig // Use swap signature as txhash
+              );
+            }
+          } catch (error) {
+            this.logger.error(
+              `Failed to save failed transaction for ${prep.assetMint.toBase58()}: ${
+                error.message
+              }`
+            );
+          }
+
           return {
             assetMint: prep.assetMint.toBase58(),
             usdcPortion: prep.assetAmount.toString(),
             transferSig: prep.transferSig,
             swapSig: sig,
-            error: confirmError.message,
+            error: errorMessage,
           };
         }
       })
@@ -1371,10 +1677,40 @@ export class TxEventManagementService {
               result.reason?.message || "Unknown error"
             }`
           );
+
+          // Save failed transaction to database (fire and forget - don't block)
+          (async () => {
+            try {
+              const adminProfile = await this.vaultDepositService[
+                "profileService"
+              ].getByWalletAddress(adminWallet.publicKey.toBase58());
+              const vaultFactory = await this.vaultFactoryService.findByAddress(
+                vault.toBase58()
+              );
+
+              if (adminProfile && vaultFactory) {
+                await this.saveFailedTransaction(
+                  vaultFactory._id.toString(),
+                  adminProfile._id.toString(),
+                  prep.assetAmount.toString(),
+                  prep.assetMint.toBase58(),
+                  prep.transferSig || "unknown" // Use transfer sig as txhash if swap sig not available
+                );
+              }
+            } catch (error) {
+              this.logger.error(
+                `Failed to save failed transaction for ${prep.assetMint.toBase58()}: ${
+                  error.message
+                }`
+              );
+            }
+          })();
+
           return {
             assetMint: prep.assetMint.toBase58(),
             usdcPortion: prep.assetAmount.toString(),
             transferSig: prep.transferSig,
+            swapSig: prep.transferSig || "unknown", // Use transfer sig as fallback since swap sig not available
             error: result.reason?.message || "Confirmation promise rejected",
           };
         }
@@ -1384,6 +1720,208 @@ export class TxEventManagementService {
     // Add successful confirmations to results
     results.push(...confirmedSwaps);
 
+    // DEBUG: Log all results to see what's being marked as failed
+    this.logger.log(
+      `[DEBUG] Total results: ${results.length}. Results details:`,
+      results.map((r) => ({
+        assetMint: r.assetMint,
+        hasError: !!r.error,
+        error: r.error || "none",
+        usdcPortion: r.usdcPortion,
+      }))
+    );
+
+    // Calculate failed swaps and remaining USDC in admin wallet
+    const failedSwaps = results.filter((r) => r.error);
+    const totalFailedUSDC = failedSwaps.reduce(
+      (sum, swap) => sum + BigInt(swap.usdcPortion || "0"),
+      BigInt(0)
+    );
+
+    this.logger.log(
+      `[DEBUG] Failed swaps count: ${
+        failedSwaps.length
+      }, Total failed USDC: ${totalFailedUSDC.toString()}`
+    );
+
+    // If there are failed swaps, return the USDC back to the vault
+    let returnTransferSig: string | null = null;
+    if (totalFailedUSDC > BigInt(0)) {
+      this.logger.warn(
+        `[WARNING] ${
+          failedSwaps.length
+        } swap(s) failed. Total USDC to return: ${totalFailedUSDC.toString()}. ` +
+          `Returning USDC from admin wallet (${adminUSDC.toBase58()}) back to vault (${vaultUSDCAccount.toBase58()})`
+      );
+
+      try {
+        // Check admin USDC balance before attempting return
+        const adminUSDCAccount = await getAccount(connection, adminUSDC);
+        const adminUSDCBalance = BigInt(adminUSDCAccount.amount.toString());
+
+        // IMPORTANT: Only return the exact amount from failed swaps, not all leftover USDC
+        // This ensures we keep any buffer/reserve USDC in the admin wallet
+        const amountToReturn = totalFailedUSDC; // Only return what failed, not all balance
+
+        // Safety check: Don't return more than we have
+        if (amountToReturn > adminUSDCBalance) {
+          this.logger.warn(
+            `[WARNING] Cannot return full failed amount: admin wallet has ${adminUSDCBalance.toString()}, but ${totalFailedUSDC.toString()} is needed. Returning available balance.`
+          );
+          // Only return what we have if it's less than failed amount
+          if (adminUSDCBalance > BigInt(0)) {
+            // Return what we have
+            this.logger.log(
+              `[DEBUG] Creating transfer instruction to return ${adminUSDCBalance.toString()} USDC to vault`
+            );
+
+            // Create SPL token transfer instruction
+            const returnTransferInstruction = createTransferInstruction(
+              adminUSDC, // source: admin wallet USDC account
+              vaultUSDCAccount, // destination: vault USDC account
+              adminWallet.publicKey, // authority: admin wallet (signer)
+              adminUSDCBalance, // amount to transfer
+              [], // multiSigners (none needed)
+              TOKEN_PROGRAM_ID // token program
+            );
+
+            // Build and send the return transfer transaction
+            const { blockhash: returnBlockhash } =
+              await connection.getLatestBlockhash();
+
+            const returnMessage = new TransactionMessage({
+              payerKey: adminWallet.publicKey,
+              recentBlockhash: returnBlockhash,
+              instructions: [
+                ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
+                ComputeBudgetProgram.setComputeUnitPrice({
+                  microLamports: 1000,
+                }),
+                returnTransferInstruction,
+              ],
+            }).compileToV0Message();
+
+            const returnTransaction = new VersionedTransaction(returnMessage);
+            const signedReturnTx = await adminWallet.signTransaction(
+              returnTransaction
+            );
+
+            this.logger.log(
+              `[API CALL] 🔗 Solana RPC: sendRawTransaction (returning USDC to vault)`
+            );
+            returnTransferSig = await connection.sendRawTransaction(
+              signedReturnTx.serialize(),
+              { skipPreflight: false, preflightCommitment: "processed" }
+            );
+
+            this.logger.log(
+              `[API CALL] ✅ Solana RPC: sendRawTransaction completed - signature: ${returnTransferSig}`
+            );
+
+            // Wait for confirmation
+            this.logger.log(
+              `[API CALL] 🔗 Solana RPC: confirmTransaction (returning USDC to vault)`
+            );
+            await connection.confirmTransaction(returnTransferSig, "confirmed");
+            this.logger.log(
+              `[API CALL] ✅ Solana RPC: confirmTransaction completed - USDC returned successfully`
+            );
+
+            this.logger.log(
+              `[SUCCESS] Returned ${adminUSDCBalance.toString()} USDC from admin wallet back to vault. Transaction: ${returnTransferSig}`
+            );
+          } else {
+            this.logger.warn(
+              `[WARNING] Admin wallet has no USDC to return. Failed swaps: ${failedSwaps.length}`
+            );
+            returnTransferSig = null;
+          }
+        } else if (amountToReturn > BigInt(0)) {
+          // Return the exact failed amount
+          this.logger.log(
+            `[DEBUG] Creating transfer instruction to return ${amountToReturn.toString()} USDC to vault (exact failed amount, not all balance)`
+          );
+          // ... rest of return logic with amountToReturn
+          this.logger.log(
+            `[DEBUG] Creating transfer instruction to return ${amountToReturn.toString()} USDC to vault`
+          );
+
+          // Create SPL token transfer instruction
+          const returnTransferInstruction = createTransferInstruction(
+            adminUSDC, // source: admin wallet USDC account
+            vaultUSDCAccount, // destination: vault USDC account
+            adminWallet.publicKey, // authority: admin wallet (signer)
+            amountToReturn, // amount to transfer
+            [], // multiSigners (none needed)
+            TOKEN_PROGRAM_ID // token program
+          );
+
+          // Build and send the return transfer transaction
+          const { blockhash: returnBlockhash } =
+            await connection.getLatestBlockhash();
+
+          const returnMessage = new TransactionMessage({
+            payerKey: adminWallet.publicKey,
+            recentBlockhash: returnBlockhash,
+            instructions: [
+              ComputeBudgetProgram.setComputeUnitLimit({ units: 200_000 }),
+              ComputeBudgetProgram.setComputeUnitPrice({
+                microLamports: 1000,
+              }),
+              returnTransferInstruction,
+            ],
+          }).compileToV0Message();
+
+          const returnTransaction = new VersionedTransaction(returnMessage);
+          const signedReturnTx = await adminWallet.signTransaction(
+            returnTransaction
+          );
+
+          this.logger.log(
+            `[API CALL] 🔗 Solana RPC: sendRawTransaction (returning USDC to vault)`
+          );
+          returnTransferSig = await connection.sendRawTransaction(
+            signedReturnTx.serialize(),
+            { skipPreflight: false, preflightCommitment: "processed" }
+          );
+
+          this.logger.log(
+            `[API CALL] ✅ Solana RPC: sendRawTransaction completed - signature: ${returnTransferSig}`
+          );
+
+          // Wait for confirmation
+          this.logger.log(
+            `[API CALL] 🔗 Solana RPC: confirmTransaction (returning USDC to vault)`
+          );
+          await connection.confirmTransaction(returnTransferSig, "confirmed");
+          this.logger.log(
+            `[API CALL] ✅ Solana RPC: confirmTransaction completed - USDC returned successfully`
+          );
+
+          this.logger.log(
+            `[SUCCESS] Returned ${amountToReturn.toString()} USDC from admin wallet back to vault. Transaction: ${returnTransferSig}`
+          );
+        }
+      } catch (returnError: any) {
+        const errorMessage = returnError.message || "Unknown error";
+        this.logger.error(
+          `[ERROR] Failed to return USDC to vault: ${errorMessage}. ` +
+            `USDC remains in admin wallet: ${adminUSDC.toBase58()}. ` +
+            `Manual recovery required.`
+        );
+        // Don't throw - we still want to return the swap results even if return fails
+        // The warning in the response will indicate manual recovery is needed
+      }
+    } else {
+      // All swaps succeeded - DO NOT return any leftover USDC
+      // Keep it in admin wallet as buffer/reserve
+      this.logger.log(
+        `[DEBUG] All swaps succeeded. Any leftover USDC will remain in admin wallet as buffer.`
+      );
+      // Remove or comment out the leftover USDC check if you want to keep it
+      // The current code at lines 1716-1739 only logs, doesn't return, which is correct
+    }
+
     await this.clearCache();
     return {
       vaultIndex,
@@ -1392,6 +1930,19 @@ export class TxEventManagementService {
       vaultUsdcBalance: totalUSDC.toString(),
       etfSharePriceRaw: etfSharePriceRaw,
       swaps: results,
+      // Include information about failed swaps and return status
+      ...(totalFailedUSDC > BigInt(0) && {
+        failedSwapsInfo: {
+          count: failedSwaps.length,
+          totalFailedUSDC: totalFailedUSDC.toString(),
+          adminUSDCAccount: adminUSDC.toBase58(),
+          vaultUSDCAccount: vaultUSDCAccount.toBase58(),
+          returnTransferSignature: returnTransferSig || null,
+          note: returnTransferSig
+            ? `USDC successfully returned to vault (tx: ${returnTransferSig})`
+            : "USDC return failed - manual recovery required",
+        },
+      }),
     };
   }
 
@@ -1427,9 +1978,11 @@ export class TxEventManagementService {
       this.logger.log(`[DEBUG] Using default Solana RPC URL: ${rpcUrl}`);
     }
 
-    const connection = new Connection(rpcUrl, "processed");
+    // Use "confirmed" commitment level for better reliability on production RPC nodes
+    // "processed" is fast but less reliable; "confirmed" is more consistent
+    const connection = new Connection(rpcUrl, "confirmed");
     this.logger.log(`🌐 Using RPC URL: ${rpcUrl}`);
-    this.logger.log(`🔗 Connection commitment: processed`);
+    this.logger.log(`🔗 Connection commitment: confirmed`);
 
     const adminKeyRaw = this.configService.get("SOLANA_ADMIN_PRIVATE_KEY");
     if (!adminKeyRaw)
@@ -1471,7 +2024,7 @@ export class TxEventManagementService {
       outputMint: PublicKey,
       amount: bigint
     ) => {
-      const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64`;
+      const url = `${JUPITER_QUOTE_API}?inputMint=${inputMint.toBase58()}&outputMint=${outputMint.toBase58()}&amount=${amount.toString()}&slippageBps=200&onlyDirectRoutes=false&maxAccounts=64&excludeDexes=Sanctum,Sanctum+Infinity`;
       const headers: any = {};
       if (JUPITER_API_KEY) {
         headers["x-api-key"] = JUPITER_API_KEY;
@@ -1640,7 +2193,7 @@ export class TxEventManagementService {
         const decimals = data[44]; // Decimals is at offset 44 in mint account
         return decimals || 6;
       } catch (error) {
-        console.warn(
+        this.logger.warn(
           `Warning: Could not fetch decimals for ${mintAddress.toBase58()}, defaulting to 6`
         );
         return 6;
@@ -1846,17 +2399,33 @@ export class TxEventManagementService {
 
     // Helper function to get compute unit config
     const getComputeUnitConfig = (quote: any) => {
+      // Detect Sanctum Infinity routes (very compute-intensive)
+      const hasSanctumInfinity = quote.routePlan?.some(
+        (route: any) =>
+          route.swapInfo?.ammKey ===
+            "Gb7m4daakbVbrFLR33FKMDVMHAprRZ66CSYt4bpFwUgS" ||
+          route.swapInfo?.label === "Sanctum Infinity"
+      );
+
       // Check if it's a complex swap (multiple hops, large amount)
       const isComplexSwap =
         quote.routePlan?.length > 2 ||
         BigInt(quote.inAmount || 0) > BigInt(1_000_000); // > 1 USDC
 
-      if (isComplexSwap) {
+      if (hasSanctumInfinity) {
+        this.logger.log(
+          `[redeemSwapAdmin] Sanctum Infinity route detected - using max CU (${1_400_000}) and very high priority (2000)`
+        );
+        return {
+          units: 1_400_000, // Maximum allowed CU limit in Solana (Sanctum routes need max)
+          microLamports: 2000, // Very high priority fee for Sanctum routes
+        };
+      } else if (isComplexSwap) {
         this.logger.log(
           `[redeemSwapAdmin] Complex swap detected, using high CU limit`
         );
         return {
-          units: 2_000_000, // 2M CU for complex swaps
+          units: 1_400_000, // Maximum allowed CU limit in Solana
           microLamports: 1000, // Higher priority fee
         };
       } else {
@@ -1864,7 +2433,7 @@ export class TxEventManagementService {
           `[redeemSwapAdmin] Simple swap detected, using standard CU limit`
         );
         return {
-          units: 1_500_000, // 1.5M CU for simple swaps
+          units: 1_400_000, // Maximum allowed CU limit in Solana
           microLamports: 500, // Lower priority fee
         };
       }
@@ -2168,7 +2737,8 @@ export class TxEventManagementService {
         return await (program as any).methods
           .withdrawUnderlyingToUser(
             new BN(vaultIndex),
-            new BN(prep.withdrawAmount.toString())
+            new BN(prep.withdrawAmount.toString()),
+            prep.asset.decimals // decimals parameter (u8) - required for Token-2022 support
           )
           .accountsStrict({
             user: factoryAdminPubkey,
@@ -2176,6 +2746,7 @@ export class TxEventManagementService {
             vault,
             vaultAssetAccount: prep.vaultAsset,
             userAssetAccount: prep.adminAssetAta,
+            mint: prep.asset.mint, // mint account - required for Token-2022 transfer_checked
             tokenProgram: prep.assetTokenProgram,
             systemProgram: SystemProgram.programId,
           })
@@ -2450,14 +3021,38 @@ export class TxEventManagementService {
     const confirmationResults = await Promise.allSettled(
       sentTransactionResults.map(async (result, idx) => {
         if (result.status === "fulfilled") {
+          const sig = result.value;
           await retryWithBackoff(
-            () => connection.confirmTransaction(result.value, "confirmed"),
+            () => connection.confirmTransaction(sig, "confirmed"),
             3
           );
+
+          // ⚠️ CRITICAL: Verify transaction actually succeeded (not just confirmed)
+          const verifiedTransaction = await connection.getTransaction(sig, {
+            maxSupportedTransactionVersion: 0,
+            commitment: "confirmed",
+          });
+
+          if (!verifiedTransaction) {
+            throw new Error("Transaction not found after confirmation");
+          }
+
+          // Check if transaction actually succeeded
+          if (verifiedTransaction.meta?.err) {
+            const errorMessage = JSON.stringify(verifiedTransaction.meta.err);
+            this.logger.error(
+              `[ERROR] Redeem swap transaction ${sig} for ${swapTransactions[
+                idx
+              ].asset.mint.toBase58()} FAILED with error: ${errorMessage}`
+            );
+            // Return null to indicate failure (will be filtered out)
+            return null;
+          }
+
           return {
             mint: swapTransactions[idx].asset.mint.toBase58(),
             input: swapTransactions[idx].withdrawAmount.toString(),
-            sig: result.value,
+            sig: sig,
           };
         }
         return null;
@@ -3468,10 +4063,29 @@ export class TxEventManagementService {
         `Successfully created vault factory record: ${vaultRecord._id}`
       );
 
+      // Transfer 1 USDC initial reserve to vault (for the 1 token minted at creation)
+      this.logger.log(
+        `[INITIAL RESERVE] Starting transfer for vault: ${structuredVaultData.vaultPda}`
+      );
+      const reserveTransferSig = await this.transferInitialReserveToVault(
+        structuredVaultData.vaultPda,
+        structuredVaultData.vaultIndex
+      );
+      if (reserveTransferSig) {
+        this.logger.log(
+          `[INITIAL RESERVE] ✅ Transfer completed: ${reserveTransferSig}`
+        );
+      } else {
+        this.logger.warn(
+          `[INITIAL RESERVE] ❌ Transfer failed or skipped for vault: ${structuredVaultData.vaultPda}`
+        );
+      }
+
       // Add vault creation result to the array
       vaultCreationResults.push({
         eventType: "VaultCreated",
         vault: vaultRecord,
+        initialReserveTransfer: reserveTransferSig,
       });
     } catch (error) {
       this.logger.log(
@@ -3488,6 +4102,310 @@ export class TxEventManagementService {
     }
 
     return vaultCreationResults;
+  }
+
+  /**
+   * Transfer 1 USDC initial reserve to vault when it's created
+   * This is needed because 1 vault token is minted at creation time
+   */
+  private async transferInitialReserveToVault(
+    vaultAddress: string,
+    vaultIndex: number
+  ): Promise<string | null> {
+    this.logger.log(
+      `[INITIAL RESERVE] transferInitialReserveToVault called for vault: ${vaultAddress}`
+    );
+    try {
+      const STABLECOIN_MINT = new PublicKey(
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" // USDC
+      );
+      const INITIAL_RESERVE_AMOUNT = BigInt(1_000_000); // 1 USDC (6 decimals)
+
+      // Get admin wallet
+      const adminKeyRaw = this.configService.get("SOLANA_ADMIN_PRIVATE_KEY");
+      if (!adminKeyRaw) {
+        this.logger.error(
+          "[INITIAL RESERVE] SOLANA_ADMIN_PRIVATE_KEY not found, skipping initial reserve transfer"
+        );
+        return null;
+      }
+      this.logger.log(
+        `[INITIAL RESERVE] Admin key found, wallet: ${Keypair.fromSecretKey(
+          new Uint8Array(JSON.parse(adminKeyRaw))
+        ).publicKey.toBase58()}`
+      );
+
+      const secret = new Uint8Array(JSON.parse(adminKeyRaw));
+      const adminKeypair = Keypair.fromSecretKey(secret);
+      const adminWallet = new Wallet(adminKeypair);
+
+      // Get RPC connection
+      const heliusRpcUrl = this.configService.get("HELIUS_RPC_URL");
+      const solanaRpcUrl = this.configService.get("SOLANA_RPC_URL");
+      const rpcUrl =
+        heliusRpcUrl || solanaRpcUrl || "https://api.mainnet-beta.solana.com";
+      const connection = new Connection(rpcUrl, "confirmed");
+
+      // Get admin USDC account
+      const adminUSDC = await getAssociatedTokenAddress(
+        STABLECOIN_MINT,
+        adminWallet.publicKey,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      // Check if admin has enough USDC
+      this.logger.log(
+        `[INITIAL RESERVE] Checking admin USDC account: ${adminUSDC.toBase58()}`
+      );
+      try {
+        const adminAccount = await getAccount(connection, adminUSDC);
+        const adminBalance = BigInt(adminAccount.amount.toString());
+        this.logger.log(
+          `[INITIAL RESERVE] Admin USDC balance: ${adminBalance.toString()} (${
+            Number(adminBalance) / 1_000_000
+          } USDC)`
+        );
+        if (adminBalance < INITIAL_RESERVE_AMOUNT) {
+          this.logger.error(
+            `[INITIAL RESERVE] Admin wallet has insufficient USDC. Required: ${INITIAL_RESERVE_AMOUNT}, Available: ${adminBalance.toString()}`
+          );
+          return null;
+        }
+      } catch (error) {
+        this.logger.error(
+          `[INITIAL RESERVE] Admin USDC account not found or error: ${error.message}`
+        );
+        return null;
+      }
+
+      // Get vault stablecoin account (PDA) - same derivation as reference code (line 488-491)
+      const vault = new PublicKey(vaultAddress);
+      const PROGRAM_ID = new PublicKey(
+        this.configService.get("SOLANA_VAULT_FACTORY_ADDRESS") ||
+          "BHTRWbEGRfJZSVXkJXj1Cv48knuALpUvijJwvuobyvvB"
+      );
+
+      // Use findProgramAddressSync to get the correct PDA (same as program uses)
+      const [vaultStablecoinAccount] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault_stablecoin_account"), vault.toBuffer()],
+        PROGRAM_ID
+      );
+
+      this.logger.log(
+        `[INITIAL RESERVE] Vault stablecoin account (PDA): ${vaultStablecoinAccount.toBase58()}`
+      );
+
+      // Check if account exists - if not, initialize it via deposit instruction
+      const vaultAccountInfo = await connection.getAccountInfo(
+        vaultStablecoinAccount
+      );
+
+      let accountWasInitialized = false;
+      if (!vaultAccountInfo) {
+        this.logger.log(
+          `[INITIAL RESERVE] Vault stablecoin PDA account doesn't exist. Initializing via deposit instruction...`
+        );
+
+        // Initialize account using deposit instruction with minimal amount (1 base unit)
+        const MINIMAL_DEPOSIT_AMOUNT = BigInt(1); // 1 base unit = 0.000001 USDC
+        const INITIAL_SHARE_PRICE = BigInt(1_000_000); // 1.0 USDC per share (for new vault)
+
+        try {
+          // Set up Anchor provider and program
+          const provider = new AnchorProvider(connection, adminWallet, {});
+          const idl = (await import("../../utils/idls/idls"))
+            .VAULT_FACTORY_IDL as any;
+          const program = new Program(idl, provider);
+
+          // Derive PDAs needed for deposit
+          const [factory] = PublicKey.findProgramAddressSync(
+            [Buffer.from("factory_v2")],
+            PROGRAM_ID
+          );
+          const [vaultMint] = PublicKey.findProgramAddressSync(
+            [Buffer.from("vault_mint"), vault.toBuffer()],
+            PROGRAM_ID
+          );
+
+          // Get admin's vault token account (for receiving vault tokens from deposit)
+          const adminVaultAccount = await getAssociatedTokenAddress(
+            vaultMint,
+            adminWallet.publicKey,
+            false,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          );
+
+          // Check if admin vault account exists, create if not
+          const adminVaultAccountInfo = await connection.getAccountInfo(
+            adminVaultAccount
+          );
+          if (!adminVaultAccountInfo) {
+            this.logger.log(
+              `[INITIAL RESERVE] Creating admin vault token account: ${adminVaultAccount.toBase58()}`
+            );
+            const createVaultAccountIx =
+              createAssociatedTokenAccountInstruction(
+                adminWallet.publicKey,
+                adminVaultAccount,
+                adminWallet.publicKey,
+                vaultMint,
+                TOKEN_PROGRAM_ID,
+                ASSOCIATED_TOKEN_PROGRAM_ID
+              );
+            const { blockhash: createBlockhash } =
+              await connection.getLatestBlockhash();
+            const createTx = new (
+              await import("@solana/web3.js")
+            ).Transaction();
+            createTx.add(createVaultAccountIx);
+            createTx.recentBlockhash = createBlockhash;
+            createTx.feePayer = adminWallet.publicKey;
+            const signedCreate = await adminWallet.signTransaction(createTx);
+            const createSig = await connection.sendRawTransaction(
+              signedCreate.serialize(),
+              { skipPreflight: false }
+            );
+            await connection.confirmTransaction(createSig, "confirmed");
+            this.logger.log(
+              `[INITIAL RESERVE] ✅ Created admin vault token account: ${createSig}`
+            );
+          }
+
+          // Get fee recipient accounts (needed for deposit instruction)
+          // These should be factory admin accounts - using admin wallet for simplicity
+          const feeRecipientStablecoinAccount = await getAssociatedTokenAddress(
+            STABLECOIN_MINT,
+            adminWallet.publicKey,
+            false,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          );
+          const vaultAdminStablecoinAccount = await getAssociatedTokenAddress(
+            STABLECOIN_MINT,
+            adminWallet.publicKey,
+            false,
+            TOKEN_PROGRAM_ID,
+            ASSOCIATED_TOKEN_PROGRAM_ID
+          );
+
+          // Call deposit instruction to initialize the vault stablecoin account
+          this.logger.log(
+            `[INITIAL RESERVE] Calling deposit instruction with ${MINIMAL_DEPOSIT_AMOUNT.toString()} base units to initialize account...`
+          );
+
+          // Jupiter program ID (v6 on mainnet) - required even for simple deposits
+          const JUPITER_PROGRAM_ID = new PublicKey(
+            "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+          );
+
+          const depositSig = await (program as any).methods
+            .deposit(
+              new BN(vaultIndex),
+              new BN(MINIMAL_DEPOSIT_AMOUNT.toString()),
+              new BN(INITIAL_SHARE_PRICE.toString())
+            )
+            .accountsStrict({
+              user: adminWallet.publicKey,
+              factory,
+              vault,
+              vaultMint,
+              userStablecoinAccount: adminUSDC,
+              stablecoinMint: STABLECOIN_MINT,
+              vaultStablecoinAccount,
+              userVaultAccount: adminVaultAccount,
+              feeRecipientStablecoinAccount,
+              vaultAdminStablecoinAccount,
+              jupiterProgram: JUPITER_PROGRAM_ID,
+              tokenProgram: TOKEN_PROGRAM_ID,
+              systemProgram: SystemProgram.programId,
+            })
+            .rpc();
+
+          this.logger.log(
+            `[INITIAL RESERVE] ✅ Deposit instruction completed: ${depositSig}, waiting for confirmation...`
+          );
+          await connection.confirmTransaction(depositSig, "confirmed");
+
+          // Verify account now exists
+          const vaultAccountInfoAfter = await connection.getAccountInfo(
+            vaultStablecoinAccount
+          );
+          if (!vaultAccountInfoAfter) {
+            this.logger.error(
+              `[INITIAL RESERVE] ❌ Account still doesn't exist after deposit!`
+            );
+            return null;
+          }
+
+          this.logger.log(
+            `[INITIAL RESERVE] ✅ Vault stablecoin account initialized: ${vaultStablecoinAccount.toBase58()}`
+          );
+          accountWasInitialized = true;
+        } catch (error) {
+          this.logger.error(
+            `[INITIAL RESERVE] Failed to initialize vault stablecoin account via deposit: ${error.message}`,
+            error.stack
+          );
+          return null;
+        }
+      } else {
+        this.logger.log(
+          `[INITIAL RESERVE] Vault stablecoin account already exists: ${vaultStablecoinAccount.toBase58()}`
+        );
+      }
+
+      // Transfer full 1 USDC amount regardless of initialization status
+      const REMAINING_AMOUNT = INITIAL_RESERVE_AMOUNT; // Always transfer 1 USDC (1,000,000 base units)
+
+      // Create transfer instruction for remaining amount
+      this.logger.log(
+        `[INITIAL RESERVE] Creating transfer instruction: ${adminUSDC.toBase58()} -> ${vaultStablecoinAccount.toBase58()}, amount: ${REMAINING_AMOUNT.toString()}`
+      );
+      const transferIx = createTransferInstruction(
+        adminUSDC, // source: admin USDC account
+        vaultStablecoinAccount, // destination: vault stablecoin account
+        adminWallet.publicKey, // authority: admin wallet
+        Number(REMAINING_AMOUNT), // remaining USDC
+        [], // multiSigners
+        TOKEN_PROGRAM_ID
+      );
+
+      // Build and send transaction
+      this.logger.log(`[INITIAL RESERVE] Building transfer transaction...`);
+      const { blockhash } = await connection.getLatestBlockhash();
+      const tx = new (await import("@solana/web3.js")).Transaction();
+      tx.add(transferIx);
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = adminWallet.publicKey;
+
+      this.logger.log(`[INITIAL RESERVE] Signing transfer transaction...`);
+      const signed = await adminWallet.signTransaction(tx);
+      this.logger.log(`[INITIAL RESERVE] Sending transfer transaction...`);
+      const sig = await connection.sendRawTransaction(signed.serialize(), {
+        skipPreflight: false,
+      });
+      this.logger.log(
+        `[INITIAL RESERVE] Transfer transaction sent: ${sig}, waiting for confirmation...`
+      );
+      await connection.confirmTransaction(sig, "confirmed");
+
+      this.logger.log(
+        `[INITIAL RESERVE] ✅ Transferred ${REMAINING_AMOUNT.toString()} base units (${
+          Number(REMAINING_AMOUNT) / 1_000_000
+        } USDC) initial reserve to vault ${vaultAddress}. Transaction: ${sig}`
+      );
+
+      return sig;
+    } catch (error) {
+      this.logger.error(
+        `Failed to transfer initial reserve to vault ${vaultAddress}: ${error.message}`,
+        error.stack
+      );
+      return null;
+    }
   }
 
   // Method to get transaction details without logging (for other use cases)

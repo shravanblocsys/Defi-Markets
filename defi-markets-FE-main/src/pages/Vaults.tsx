@@ -99,6 +99,12 @@ function FeaturedVaultsCarousel({
                   ? vault.creator.avatar
                   : ""
               }
+              twitter_username={
+                typeof vault.creator === "object" &&
+                vault.creator?.twitter_username
+                  ? vault.creator.twitter_username
+                  : undefined
+              }
               chartData={vaultChartData[vault._id] || []}
               isAPYCalculating={isAPYCalculating()}
             />
@@ -328,8 +334,9 @@ const Vaults = () => {
 
       if (response && response.data) {
         // Create a map of vaultId to TVL data
-        const tvlMap: Record<string, { totalUsd: number; loading: boolean }> = {};
-        
+        const tvlMap: Record<string, { totalUsd: number; loading: boolean }> =
+          {};
+
         // Map all vaults TVL data
         response.data.data.forEach((item) => {
           tvlMap[item.vaultId] = { totalUsd: item.totalUsd, loading: false };
@@ -377,14 +384,14 @@ const Vaults = () => {
       setTvlData((prev) => {
         const updated = { ...prev };
         let hasUpdates = false;
-        
+
         allVaultIds.forEach((vaultId) => {
           if (!updated[vaultId]) {
             updated[vaultId] = { totalUsd: 0, loading: true };
             hasUpdates = true;
           }
         });
-        
+
         return hasUpdates ? updated : prev;
       });
 
@@ -549,17 +556,17 @@ const Vaults = () => {
     }
 
     const contractTvl = tvlData[vault._id];
-    
+
     // Show loading state if TVL is being fetched
     if (contractTvl?.loading || tvlLoading) {
       return "Loading...";
     }
-    
+
     // Use contract-based TVL if available and > 0
     if (contractTvl?.totalUsd && contractTvl.totalUsd > 0) {
       return formatTVL(contractTvl.totalUsd);
     }
-    
+
     // Fall back to backend TVL
     return formatTVL(Number(vault.totalValueLocked || 0));
   };
@@ -712,13 +719,15 @@ const Vaults = () => {
           // Prefer contract-based TVL if available, fall back to backend TVL
           const aContractTvl = a._id ? tvlData[a._id]?.totalUsd : undefined;
           const bContractTvl = b._id ? tvlData[b._id]?.totalUsd : undefined;
-          
-          aValue = (aContractTvl && aContractTvl > 0) 
-            ? aContractTvl 
-            : parseFloat(String(a.totalValueLocked)) || 0;
-          bValue = (bContractTvl && bContractTvl > 0) 
-            ? bContractTvl 
-            : parseFloat(String(b.totalValueLocked)) || 0;
+
+          aValue =
+            aContractTvl && aContractTvl > 0
+              ? aContractTvl
+              : parseFloat(String(a.totalValueLocked)) || 0;
+          bValue =
+            bContractTvl && bContractTvl > 0
+              ? bContractTvl
+              : parseFloat(String(b.totalValueLocked)) || 0;
           break;
         }
         case "newest": {
@@ -852,6 +861,12 @@ const Vaults = () => {
                         vault.creator?.avatar
                           ? vault.creator.avatar
                           : ""
+                      }
+                      twitter_username={
+                        typeof vault.creator === "object" &&
+                        vault.creator?.twitter_username
+                          ? vault.creator.twitter_username
+                          : undefined
                       }
                       chartData={vaultChartData[vault._id] || []}
                       isAPYCalculating={isAPYCalculating()}
