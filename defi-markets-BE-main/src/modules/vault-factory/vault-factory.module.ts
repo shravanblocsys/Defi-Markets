@@ -17,6 +17,7 @@ import { AuthModule } from "../auth/auth.module";
 import { RolesModule } from "../roles/roles.module";
 import { ChartsModule } from "../charts/charts.module";
 import { VaultDepositModule } from "../vault-deposit/vault-deposit.module";
+import { DashboardModule } from "../dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { VaultDepositModule } from "../vault-deposit/vault-deposit.module";
     AssetAllocationModule,
     forwardRef(() => ChartsModule),
     forwardRef(() => VaultDepositModule),
+    forwardRef(() => DashboardModule),
   ],
   controllers: [VaultFactoryController],
   providers: [VaultFactoryService, TokenManagementService, PaginationHelper],

@@ -20,6 +20,7 @@ import { RedisModule } from '../../utils/redis';
     RedisModule
   ],
   providers: [DashboardService],
-  controllers: [DashboardController]
+  controllers: [DashboardController],
+  exports: [DashboardService]
 })
 export class DashboardModule {}

@@ -12,6 +12,8 @@ import { IProfile } from "./profile.model";
 import { RegisterPayload } from "modules/auth/payload/register.payload";
 import { PatchProfilePayload } from "./payload/patch.profile.payload";
 import { RolesService } from "../roles/roles.service";
+import { AuthService } from "../auth/auth.service";
+import { Inject, forwardRef } from "@nestjs/common";
 
 /**
  * Models a typical response for a crud operation
@@ -35,7 +37,9 @@ export class ProfileService {
    */
   constructor(
     @InjectModel("Profile") private readonly profileModel: Model<IProfile>,
-    private readonly rolesService: RolesService
+    private readonly rolesService: RolesService,
+    @Inject(forwardRef(() => AuthService))
+    private readonly authService: AuthService
   ) {}
 
   /**

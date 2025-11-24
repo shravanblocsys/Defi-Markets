@@ -1,4 +1,4 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { MongooseModule } from "@nestjs/mongoose";
 import { HttpModule } from "@nestjs/axios";
 import { VaultInsightsService } from "./vault-insights.service";
@@ -17,6 +17,7 @@ import { RedisModule } from "../../utils/redis";
 import { ConfigModule } from "../config/config.module";
 import { ChartsModule } from "../charts/charts.module";
 import { TokenMappingService } from "./token-mapping.service";
+import { DashboardModule } from "../dashboard/dashboard.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { TokenMappingService } from "./token-mapping.service";
     RedisModule,
     ConfigModule,
     ChartsModule,
+    forwardRef(() => DashboardModule),
   ],
   providers: [VaultInsightsService, PaginationHelper, TokenMappingService],
   controllers: [VaultInsightsController],

@@ -11,6 +11,7 @@ import { AssetAllocationService } from "../asset-allocation/asset-allocation.ser
 import { VaultFactoryService } from "../vault-factory/vault-factory.service";
 import { VaultDepositService } from "../vault-deposit/vault-deposit.service";
 import { VaultFeesCalculationService } from "../vault-management-fees/vault-fees-calculation.service";
+import { Inject, forwardRef } from "@nestjs/common";
 
 @Injectable()
 export class CronJobService implements OnModuleInit {
@@ -24,6 +25,7 @@ export class CronJobService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly assetAllocationService: AssetAllocationService,
     private readonly vaultFactoryService: VaultFactoryService,
+    @Inject(forwardRef(() => VaultDepositService))
     private readonly vaultDepositService: VaultDepositService,
     private readonly vaultFeesCalculationService: VaultFeesCalculationService,
     private readonly schedulerRegistry: SchedulerRegistry

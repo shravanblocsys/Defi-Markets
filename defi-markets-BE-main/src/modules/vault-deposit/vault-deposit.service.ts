@@ -36,6 +36,7 @@ import { FeesManagementService } from "../fees-management/fees-management.servic
 import { ConfigService } from "../config/config.service";
 import { toBase10Decimal } from "../../utils/utils";
 import { RedisService } from "../../utils/redis";
+import { CronJobService } from "../cron-job/cron-job.service";
 
 @Injectable()
 export class VaultDepositService {
@@ -57,7 +58,9 @@ export class VaultDepositService {
     private readonly vaultFactoryService: VaultFactoryService,
     private readonly feesManagementService: FeesManagementService,
     private readonly configService: ConfigService,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
+    @Inject(forwardRef(() => CronJobService))
+    private readonly cronJobService: CronJobService
   ) {}
 
   async findAll(): Promise<VaultDeposit[]> {

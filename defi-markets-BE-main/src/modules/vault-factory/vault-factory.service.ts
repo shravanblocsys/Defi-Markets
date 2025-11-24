@@ -23,6 +23,7 @@ import { sanitizeRegexInput } from "../../utils/utils";
 import { ConfigService } from "../config/config.service";
 import { ChartsService } from "../charts/charts.service";
 import { VaultDepositService } from "../vault-deposit/vault-deposit.service";
+import { DashboardService } from "../dashboard/dashboard.service";
 import { Inject, forwardRef } from "@nestjs/common";
 
 // Type for VaultFactory with Mongoose Document methods
@@ -45,7 +46,9 @@ export class VaultFactoryService {
     @Inject(forwardRef(() => VaultDepositService))
     private readonly vaultDepositService: VaultDepositService,
     @Inject(forwardRef(() => ChartsService))
-    private readonly chartsService: ChartsService
+    private readonly chartsService: ChartsService,
+    @Inject(forwardRef(() => DashboardService))
+    private readonly dashboardService: DashboardService
   ) {}
 
   /**

@@ -39,6 +39,8 @@ import { firstValueFrom } from "rxjs";
 import { RedisService } from "../../utils/redis";
 import { ChartsService } from "../charts/charts.service";
 import { TokenMappingService } from "./token-mapping.service";
+import { DashboardService } from "../dashboard/dashboard.service";
+import { Inject, forwardRef } from "@nestjs/common";
 
 type VaultFactoryDocument = VaultFactory & Document;
 
@@ -66,7 +68,9 @@ export class VaultInsightsService {
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
     private readonly chartsService: ChartsService,
-    private readonly tokenMappingService: TokenMappingService
+    private readonly tokenMappingService: TokenMappingService,
+    @Inject(forwardRef(() => DashboardService))
+    private readonly dashboardService: DashboardService
   ) {}
 
   /**

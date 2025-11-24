@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '../config/config.module';
@@ -18,7 +18,7 @@ import { VaultManagementFeesModule } from '../vault-management-fees/vault-manage
     ScheduleModule.forRoot(),
     AssetAllocationModule,
     VaultFactoryModule,
-    VaultDepositModule,
+    forwardRef(() => VaultDepositModule),
     VaultManagementFeesModule,
   ],
   providers: [CronJobService],

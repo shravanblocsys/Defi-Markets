@@ -9,6 +9,8 @@ import {
 import { IRole } from "./roles.model";
 import { CreateRolePayload } from "./payload/create-role.payload";
 import { UpdateRolePayload } from "./payload/update-role.payload";
+import { ProfileService } from "../profile/profile.service";
+import { Inject, forwardRef } from "@nestjs/common";
 
 /**
  * Models a typical response for a crud operation
@@ -31,6 +33,8 @@ export class RolesService {
    */
   constructor(
     @InjectModel("Role") private readonly roleModel: Model<IRole>,
+    @Inject(forwardRef(() => ProfileService))
+    private readonly profileService: ProfileService
   ) {}
 
   /**
