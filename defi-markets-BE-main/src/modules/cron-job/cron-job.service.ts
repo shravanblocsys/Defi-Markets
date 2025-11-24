@@ -57,7 +57,6 @@ export class CronJobService implements OnModuleInit {
 
     return isNaN(configuredCooldown) ? 900000 : configuredCooldown;
   }
-
   /**
    * Cron job to fetch and store token prices
    * Schedule is controlled by `CRON_JOB_INTERVAL` (default: "0 *\/15 * * * *" — every 15 minutes)

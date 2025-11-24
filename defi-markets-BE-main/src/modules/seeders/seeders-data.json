@@ -13,10 +13,10 @@
   ],
   "profiles": [
     {
-      "username": "admin",
-      "email": "admin@defimarkets.com",
+      "username": "blocsys-admin",
+      "email": "",
       "name": "System Administrator",
-      "password": "Admin123!@#",
+      "password": "",
       "avatar": "https://www.gravatar.com/avatar/205e460b479e2e5b48aec07710c08d50?s=200",
       "walletAddress": "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b6",
       "roleId": "{{ADMIN_ROLE_ID}}",
